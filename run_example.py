@@ -15,6 +15,24 @@ from example_code import t2star_fitting_example, t2_fitting_example, t1rho_fitti
 console = Console()
 
 
+def maybe_launch_viewer(example_type: str, output_dir: Path) -> None:
+    """Launch the interactive viewer for supported examples."""
+    if example_type != "t2star":
+        return
+
+    try:
+        from bmri.cli.commands.view import launch_t2star_viewer
+    except Exception as exc:  # pylint: disable=broad-except
+        console.print(f"[dim]Viewer not available ({exc}). Skipping GUI preview.[/dim]")
+        return
+
+    console.print("[dim]Opening interactive viewer (close the window to continue)...[/dim]")
+    try:
+        launch_t2star_viewer(output_dir)
+    except RuntimeError as exc:
+        console.print(f"[dim]Viewer could not be started: {exc}[/dim]")
+
+
 def print_banner(example_type: str):
     """Print a beautiful banner for the fitting type."""
     titles = {
@@ -174,6 +192,8 @@ def run_with_progress(example_type: str, func):
     output_dir = folder_map.get(example_type, base_path)
 
     print_results_summary(example_type, output_dir)
+
+    maybe_launch_viewer(example_type, output_dir)
 
     console.print(f"\n[dim]Completed in {elapsed:.1f} seconds[/dim]\n")
 

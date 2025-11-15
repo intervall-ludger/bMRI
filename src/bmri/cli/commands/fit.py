@@ -109,6 +109,13 @@ def _copy_results_and_display(
         shutil.copy2(csv_file, dest)
         logger.debug(f"Copied {csv_file.name} to {output_dir}")
 
+    # Copy acquisition times (if available)
+    acquisition_file = source_dir / "acquisition_times.txt"
+    if acquisition_file.exists():
+        dest = output_dir / acquisition_file.name
+        shutil.copy2(acquisition_file, dest)
+        logger.debug(f"Copied {acquisition_file.name} to {output_dir}")
+
     # Display file summary
     console.print(f"\n[bold]Output Files:[/bold] {len(nifti_files)} NIfTI, {len(csv_files)} CSV")
     console.print(f"[dim]Location:[/dim] {output_dir}\n")

@@ -42,6 +42,8 @@ def _write_fake_results(dicom_folder: Path, csv_suffixes: list[str]) -> None:
         csv_path = dicom_folder.parent / f"{base}_{suffix}.csv"
         csv_path.write_text(header + row)
 
+    (dicom_folder / "acquisition_times.txt").write_text("0 10 20")
+
 
 class FakeT2StarFitter:
     """Stub replacing the heavy legacy fitter."""
@@ -76,6 +78,8 @@ def _assert_copied_results(output_dir: Path, csv_suffixes: list[str]) -> None:
 
     for suffix in csv_suffixes:
         assert any(output_dir.glob(f"*_{suffix}.csv"))
+
+    assert (output_dir / "acquisition_times.txt").exists()
 
 
 def test_parse_boundary_string() -> None:

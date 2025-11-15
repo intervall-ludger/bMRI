@@ -156,6 +156,8 @@ python run_example.py t1rho
 python run_example.py all
 ```
 
+The T2* example automatically launches the interactive viewer so you can inspect the fitted map (close the window to continue).
+
 **Output:**
 ```
 ╭─────────────────────────────────────────────╮
@@ -204,6 +206,15 @@ bmri fit t2star /path/to/dicom/folder \
     --output ./results \
     --min-r2 0.75
 ```
+
+#### Visualize T2*/T2 Results
+
+```bash
+# Launch the interactive PyQt viewer (expects dicom.nii.gz, params.nii.gz, acquisition_times.txt)
+bmri view t2star ./results --parameter t2_t2star
+```
+
+Close the viewer window to return to the terminal.
 
 **Output:**
 ```

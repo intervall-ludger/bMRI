@@ -83,7 +83,7 @@ def main(
         bmri fit t1rho /data/patient01/t1rho -m mask.nii.gz -c t1rho.toml
 
         # Visualize results
-        bmri visualize results/t2_t2star_map.nii.gz
+        bmri view t2star ./results
     """
     # Update global settings
     settings.verbose = verbose
@@ -96,9 +96,10 @@ def main(
 
 
 # Import and register subcommands
-from bmri.cli.commands import fit
+from bmri.cli.commands import fit, view
 
 app.add_typer(fit.app, name="fit", help="Fit relaxation time maps")
+app.add_typer(view.app, name="view", help="Visualize fitted relaxation maps")
 
 
 def cli_entry_point() -> None:
