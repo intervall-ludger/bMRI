@@ -6,11 +6,13 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
-    QMainWindow,
-    QLabel,
-    QWidget,
-    QSlider,
+    QComboBox,
     QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.cm import get_cmap
@@ -80,7 +82,7 @@ class ImageViewer(QMainWindow):
         fit_function: callable,
         time_points: list[int] | np.ndarray,
         c_int: int | None = None,
-        alpha: float = 0.3,
+        alpha: float = 0.35,
         normalize: bool = True,
         auto_cut: bool = True,
     ):
@@ -100,26 +102,34 @@ class ImageViewer(QMainWindow):
         if isinstance(fit_maps, Path):
             fit_maps = load_nii(fit_maps).array
             fit_maps[fit_maps == -1] = 0
-        dicom, fit_maps = crop_to_heatmap(dicom, fit_maps, 50)
+        if auto_cut:
+            dicom, fit_maps = crop_to_heatmap(dicom, fit_maps, 50)
+
         if isinstance(time_points, np.ndarray):
             time_points = list(time_points)
+
         self.echo_time = 0
         self.time_points = time_points
         self.dicom = dicom
         self.alpha = alpha
         self.norm = normalize
         self.fit_maps = np.array(fit_maps)
-        self.color_map = fit_maps[c_int] if c_int is not None else None
         self.fit_function = fit_function
+        self.parameter_names = list(get_function_parameter(self.fit_function))
+        if not self.parameter_names:
+            self.parameter_names = [f"Param {idx+1}" for idx in range(self.fit_maps.shape[0])]
+        self.current_param_index = c_int if c_int is not None else 1 if len(self.parameter_names) > 1 else 0
+        self.current_param_index = min(max(self.current_param_index, 0), len(self.parameter_names) - 1)
+        self.color_map = self.fit_maps[self.current_param_index]
+        self.colorbar_range = self._compute_color_range()
         self.scaling_factor = calc_scaling_factor(dicom.shape)
         self.current_slice = 0
         self.current_params = self.fit_maps[:, :, :, self.current_slice]
 
         # Create a label to display the image
         self.image_label = QLabel(self)
+        self.image_label.setStyleSheet("background-color: black; border: 1px solid #222")
         self.image_label.mousePressEvent = self.update_fit_function
-        # self.image_label.mouseMoveEvent = self.update_fit_function
-        self.scaling_factor = calc_scaling_factor(dicom.shape)
         width, height = (
             dicom.shape[1] * self.scaling_factor,
             dicom.shape[2] * self.scaling_factor,
@@ -129,14 +139,9 @@ class ImageViewer(QMainWindow):
         # Display the first slice
         self.display_slice()
 
-        # Create a horizontal slider to change the slice
-        self.slider = QSlider(Qt.Vertical)
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(self.dicom.shape[-1] - 1)
-        self.slider.valueChanged.connect(self.change_slice)
-
-        # Create a container widget to hold the plot of the fit function
+        # Container for fit plot
         self.plot_container = QWidget(self)
+        self.plot_container.setMinimumWidth(320)
 
         # Set up the axes, but don't plot any data initially
         self.x_fit = np.linspace(0, self.time_points[-1], 1000)
@@ -147,14 +152,17 @@ class ImageViewer(QMainWindow):
 
         self.init_fit_function()
 
+        controls_widget = self._create_controls()
+
         # Set the layout of the ImageViewer
         main_layout = QHBoxLayout()
-        main_layout.addWidget(self.slider)
+        main_layout.addWidget(controls_widget)
         main_layout.addWidget(self.image_label)
         main_layout.addWidget(self.plot_container)
         central_widget = QWidget(self)
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+        self.update_colorbar()
 
     def change_slice(self, slice_num: int):
         """
@@ -188,11 +196,11 @@ class ImageViewer(QMainWindow):
         # Normalize the color map to the range [0, 1]
         if self.color_map is not None:
             color_map = self.color_map[:, :, self.current_slice]
-            color_map_norm = (color_map - color_map.min()) / (
-                color_map.max() - color_map.min()
-            )
+            vmin, vmax = self.colorbar_range
+            denom = vmax - vmin if vmax != vmin else 1.0
+            color_map_norm = np.clip((color_map - vmin) / denom, 0, 1)
+            color_map_norm = np.nan_to_num(color_map_norm, nan=0.0)
 
-            # Zoom the color map by a factor of 5
             color_map_zoomed = ndimage.zoom(
                 color_map_norm,
                 (self.scaling_factor, self.scaling_factor),
@@ -200,18 +208,18 @@ class ImageViewer(QMainWindow):
                 mode="nearest",
             )
             jet_cmap = get_cmap("jet")
-            color_map_zoomed_rgb = jet_cmap(color_map_zoomed)
+            color_map_zoomed_rgb = jet_cmap(color_map_zoomed)[..., :3]
 
-            # Overlay the color map on the DICOM image pixel by pixel
-            alpha = 0.3
-            for i in range(image_zoomed.shape[0]):
-                for j in range(image_zoomed.shape[1]):
-                    if color_map_zoomed[i][j] > 0:
-                        image_zoomed_rgb[i][j] = (1 - alpha) * image_zoomed_rgb[i][
-                            j
-                        ] + alpha * color_map_zoomed_rgb[i][j][:3]
+            overlay_mask = color_map_zoomed > 0
+            if np.any(overlay_mask):
+                base = image_zoomed_rgb.astype(float)
+                base[overlay_mask] = (
+                    (1 - self.alpha) * base[overlay_mask]
+                    + self.alpha * color_map_zoomed_rgb[overlay_mask]
+                )
+                image_zoomed_rgb = base
 
-        image_zoomed_rgb = (image_zoomed_rgb * 255).round().astype("int8")
+        image_zoomed_rgb = np.clip(image_zoomed_rgb * 255, 0, 255).astype("uint8")
         # Convert the zoomed RGB image to a QImage and create a QPixmap from it
         qimage = QImage(
             image_zoomed_rgb,
@@ -224,6 +232,102 @@ class ImageViewer(QMainWindow):
 
         # Set the pixmap as the background image of the label
         self.image_label.setPixmap(pixmap)
+
+    def _create_controls(self) -> QWidget:
+        """Create the control sidebar with sliders and metadata panels."""
+        controls_layout = QVBoxLayout()
+        controls_layout.setContentsMargins(0, 0, 8, 0)
+
+        slice_label = QLabel("Slice")
+        slice_label.setStyleSheet("font-weight: bold;")
+        controls_layout.addWidget(slice_label)
+
+        self.slice_slider = QSlider(Qt.Vertical)
+        self.slice_slider.setMinimum(0)
+        self.slice_slider.setMaximum(self.dicom.shape[-1] - 1)
+        self.slice_slider.setValue(0)
+        self.slice_slider.valueChanged.connect(self.change_slice)
+        controls_layout.addWidget(self.slice_slider)
+
+        param_label = QLabel("Parameter Overlay")
+        param_label.setStyleSheet("font-weight: bold; margin-top: 12px;")
+        controls_layout.addWidget(param_label)
+
+        self.parameter_combo = QComboBox()
+        self.parameter_combo.addItems([name.upper() for name in self.parameter_names])
+        self.parameter_combo.setCurrentIndex(self.current_param_index)
+        self.parameter_combo.currentIndexChanged.connect(self.on_parameter_changed)
+        controls_layout.addWidget(self.parameter_combo)
+
+        alpha_label = QLabel("Overlay Opacity")
+        alpha_label.setStyleSheet("font-weight: bold; margin-top: 12px;")
+        controls_layout.addWidget(alpha_label)
+
+        self.alpha_slider = QSlider(Qt.Horizontal)
+        self.alpha_slider.setRange(0, 100)
+        self.alpha_slider.setValue(int(self.alpha * 100))
+        self.alpha_slider.valueChanged.connect(self.on_alpha_changed)
+        controls_layout.addWidget(self.alpha_slider)
+
+        self.colorbar_fig = Figure(figsize=(1.0, 2.4))
+        self.colorbar_canvas = FigureCanvas(self.colorbar_fig)
+        self.colorbar_ax = self.colorbar_fig.add_subplot(111)
+        self.colorbar_ax.set_facecolor("#111111")
+        controls_layout.addWidget(self.colorbar_canvas)
+
+        self.info_panel = InfoPanel(self.parameter_names)
+        controls_layout.addWidget(self.info_panel)
+        controls_layout.addStretch(1)
+
+        widget = QWidget()
+        widget.setLayout(controls_layout)
+        return widget
+
+    def _compute_color_range(self) -> tuple[float, float]:
+        """Calculate reasonable color limits for the overlay."""
+        if self.color_map is None:
+            return (0.0, 1.0)
+        finite = self.color_map[np.isfinite(self.color_map)]
+        if finite.size == 0:
+            return (0.0, 1.0)
+        vmin = float(np.nanpercentile(finite, 1))
+        vmax = float(np.nanpercentile(finite, 99))
+        if vmin == vmax:
+            vmax = vmin + 1.0
+        return vmin, vmax
+
+    def update_colorbar(self) -> None:
+        """Update the colorbar to match the current parameter range."""
+        if self.color_map is None:
+            return
+
+        vmin, vmax = self._compute_color_range()
+        self.colorbar_range = (vmin, vmax)
+
+        gradient = np.linspace(0, 1, 256).reshape(256, 1)
+        self.colorbar_ax.clear()
+        self.colorbar_ax.imshow(gradient, aspect="auto", cmap="jet", origin="lower")
+        self.colorbar_ax.set_xticks([])
+        self.colorbar_ax.set_yticks([0, 255])
+        self.colorbar_ax.set_yticklabels([f"{vmin:.1f}", f"{vmax:.1f}"])
+        self.colorbar_ax.set_title(
+            self.parameter_names[self.current_param_index], fontsize=10
+        )
+        self.colorbar_canvas.draw()
+
+    def on_alpha_changed(self, value: int) -> None:
+        """Handle overlay opacity changes."""
+        self.alpha = value / 100 or 0.01
+        self.display_slice()
+
+    def on_parameter_changed(self, index: int) -> None:
+        """Handle switching between overlay parameters."""
+        if index < 0 or index >= len(self.parameter_names):
+            return
+        self.current_param_index = index
+        self.color_map = self.fit_maps[index]
+        self.update_colorbar()
+        self.display_slice()
 
     def init_fit_function(self):
         """
@@ -254,6 +358,7 @@ class ImageViewer(QMainWindow):
         if self.norm:
             raw_data /= raw_data.max()
         self.fit_function_widget.update_plot(pixel_params, raw_data)
+        self.info_panel.update_info(x, y, self.current_slice, pixel_params)
 
 
 class FitFunctionWidget(QWidget):
@@ -288,14 +393,33 @@ class FitFunctionWidget(QWidget):
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
         self.axes = self.figure.add_subplot(111)
+        self.axes.set_facecolor("#0c0c0c")
+        self.axes.tick_params(colors="#bbbbbb")
+        for spine in self.axes.spines.values():
+            spine.set_color("#555555")
 
         # Plot the raw data and fit function
         self.x_fit = np.linspace(0, self.time_points[-1], 1000)
         self.y_fit = self.fit_function(self.x_fit, *self.params)
         self.axes.plot(
-            self.time_points, self.y_raw, "o", markersize=4, label="Raw data"
+            self.time_points,
+            self.y_raw,
+            "o",
+            markersize=4,
+            label="Raw data",
+            color="#1f77b4",
         )
-        self.axes.plot(self.x_fit, self.y_fit, "-", label="Fit function")
+        self.axes.plot(
+            self.x_fit,
+            self.y_fit,
+            "-",
+            label="Fit",
+            color="#ff7f0e",
+        )
+        self.axes.set_xlabel("Echo Time (ms)", color="#bbbbbb")
+        self.axes.set_ylabel("Signal", color="#bbbbbb")
+        self.axes.legend(loc="upper right", fontsize=8)
+        self.axes.grid(color="#222222", linestyle="--", linewidth=0.5)
 
         # Set the layout of the widget
         layout = QHBoxLayout()
@@ -324,10 +448,29 @@ class FitFunctionWidget(QWidget):
             self.y_raw = raw_data
         self.y_fit = self.fit_function(self.x_fit, *self.params)
         self.axes.clear()
+        self.axes.set_facecolor("#0c0c0c")
+        self.axes.tick_params(colors="#bbbbbb")
+        for spine in self.axes.spines.values():
+            spine.set_color("#555555")
         self.axes.plot(
-            self.time_points, self.y_raw, "o", markersize=4, label="Raw data"
+            self.time_points,
+            self.y_raw,
+            "o",
+            markersize=4,
+            label="Raw data",
+            color="#1f77b4",
         )
-        self.axes.plot(self.x_fit, self.y_fit, "-", label="Fit function")
+        self.axes.plot(
+            self.x_fit,
+            self.y_fit,
+            "-",
+            label="Fit",
+            color="#ff7f0e",
+        )
+        self.axes.set_xlabel("Echo Time (ms)", color="#bbbbbb")
+        self.axes.set_ylabel("Signal", color="#bbbbbb")
+        self.axes.legend(loc="upper right", fontsize=8)
+        self.axes.grid(color="#222222", linestyle="--", linewidth=0.5)
         if results is not None:
             self.axes.text(
                 0.5,
@@ -340,6 +483,50 @@ class FitFunctionWidget(QWidget):
             )
 
         self.canvas.draw()
+
+
+class InfoPanel(QWidget):
+    """Small panel that shows coordinates and parameter values."""
+
+    def __init__(self, parameter_names: list[str], parent: QWidget | None = None):
+        super().__init__(parent)
+        self.parameter_names = parameter_names
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.instructions = QLabel("Click on the image to inspect a voxel.")
+        self.instructions.setWordWrap(True)
+        self.instructions.setStyleSheet("color: #888;")
+        layout.addWidget(self.instructions)
+
+        self.coord_label = QLabel("Voxel: –")
+        self.coord_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(self.coord_label)
+
+        self.value_label = QLabel("Parameters will appear here.")
+        self.value_label.setWordWrap(True)
+        layout.addWidget(self.value_label)
+
+        self.setLayout(layout)
+
+    def update_info(
+        self,
+        x: int,
+        y: int,
+        slice_idx: int,
+        params: np.ndarray,
+    ) -> None:
+        """Update the displayed coordinate/parameter information."""
+        self.coord_label.setText(f"Voxel: x={x}, y={y}, slice={slice_idx}")
+        lines = []
+        for name, value in zip(self.parameter_names, params):
+            if np.isnan(value):
+                continue
+            lines.append(f"{name.upper()}: {value:.2f}")
+        if not lines:
+            lines = ["No fit available"]
+        self.value_label.setText("\n".join(lines))
 
 
 def example_1():
