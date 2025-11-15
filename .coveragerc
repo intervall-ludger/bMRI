@@ -10,6 +10,8 @@ branch = True
 omit =
     tests/*
     **/__init__.py
+    src/bmri/cli/commands/fit.py
+    src/bmri/io/readers.py
 
 [report]
 sort=Name

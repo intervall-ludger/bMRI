@@ -37,3 +37,10 @@ def test_cli_entry_point_handles_generic_error(monkeypatch: pytest.MonkeyPatch) 
         main.cli_entry_point()
 
     assert excinfo.value.code == 1
+
+
+def test_cli_version_option() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main.app, ["--version"])
+    assert result.exit_code == 0
+    assert "bMRI" in result.stdout

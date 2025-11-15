@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from bmri.exceptions import MaskError, ValidationError
+from bmri.exceptions import DICOMStructureError, MaskError, ValidationError
 from bmri.validators import (
     DICOMLayout,
     validate_boundary,
@@ -44,6 +44,22 @@ def test_validate_dicom_folder_echo_and_slice_layouts(tmp_path: Path) -> None:
 
     _, layout = validate_dicom_folder(slice_root)
     assert layout == DICOMLayout.SLICE_FOLDERS
+
+
+def test_validate_dicom_folder_errors(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(ValidationError):
+        validate_dicom_folder(empty / "missing")
+
+    with pytest.raises(DICOMStructureError):
+        validate_dicom_folder(empty)
+
+    no_dcm = tmp_path / "nodcm"
+    sub = no_dcm / "sub"
+    sub.mkdir(parents=True)
+    with pytest.raises(DICOMStructureError):
+        validate_dicom_folder(no_dcm)
 
 
 def test_validate_mask_file_variants(empty_mask_file, mask_file, tmp_path: Path) -> None:
