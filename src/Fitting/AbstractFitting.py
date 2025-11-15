@@ -251,4 +251,9 @@ def get_r2(residuals: np.ndarray, y: np.ndarray) -> float:
     """
     ss_res = np.sum(residuals**2)
     ss_tot = np.sum((y - np.mean(y)) ** 2)
+
+    # Handle edge case: all y values are equal (constant signal)
+    if ss_tot == 0:
+        return 0.0
+
     return 1 - (ss_res / ss_tot)

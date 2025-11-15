@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(pip show:*)",
+      "Bash(uv pip install:*)",
+      "Bash(uv pip compile:*)",
+      "Bash(uv add:*)",
+      "Bash(bmri fit t2star:*)",
+      "Bash(bmri:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
