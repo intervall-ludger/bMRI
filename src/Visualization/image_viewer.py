@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QMainWindow,
     QSlider,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -299,6 +300,8 @@ class ImageViewer(QMainWindow):
         self.slice_slider.setMaximum(self.dicom.shape[-1] - 1)
         self.slice_slider.setValue(0)
         self.slice_slider.valueChanged.connect(self._on_slice_slider_changed)
+        self.slice_slider.setMinimumWidth(42)
+        self.slice_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         slice_layout.addWidget(self.slice_slider)
         controls_layout.addWidget(slice_section)
 
@@ -324,6 +327,7 @@ class ImageViewer(QMainWindow):
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(self.alpha * 100))
         self.alpha_slider.valueChanged.connect(self.on_alpha_changed)
+        self.alpha_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         alpha_layout.addWidget(self.alpha_slider)
         controls_layout.addWidget(alpha_section)
 
