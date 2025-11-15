@@ -7,6 +7,7 @@ from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QComboBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -162,7 +163,49 @@ class ImageViewer(QMainWindow):
         central_widget = QWidget(self)
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+        self._apply_global_style()
         self.update_colorbar()
+
+    def _apply_global_style(self) -> None:
+        """Apply a subtle dark theme to the viewer window."""
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background-color: #0b0c10;
+            }
+            QWidget#sectionFrame {
+                background-color: #12141c;
+                border: 1px solid #1f2230;
+                border-radius: 6px;
+            }
+            QLabel {
+                color: #e0e0e0;
+            }
+            QLabel.sectionTitle {
+                font-weight: 600;
+                letter-spacing: 0.5px;
+                color: #7cd5ff;
+            }
+            QComboBox {
+                background-color: #1b1e29;
+                border: 1px solid #2a2f3f;
+                padding: 4px;
+                border-radius: 4px;
+            }
+            QSlider::groove:horizontal, QSlider::groove:vertical {
+                border: 1px solid #2a2f3f;
+                background: #181a22;
+            }
+            QSlider::handle:horizontal, QSlider::handle:vertical {
+                background: #7cd5ff;
+                border: 1px solid #22283a;
+                width: 14px;
+                height: 14px;
+                margin: -4px 0;
+                border-radius: 7px;
+            }
+        """
+        )
 
     def change_slice(self, slice_num: int):
         """
@@ -172,7 +215,15 @@ class ImageViewer(QMainWindow):
         """
         self.current_slice = slice_num
         self.current_params = self.fit_maps[:, :, :, self.current_slice]
+        if hasattr(self, "slice_value_label"):
+            self.slice_value_label.setText(
+                f"{slice_num + 1} / {self.dicom.shape[-1]}"
+            )
         self.display_slice()
+
+    def _on_slice_slider_changed(self, value: int) -> None:
+        """Handle slider changes and keep the label in sync."""
+        self.change_slice(value)
 
     def display_slice(self):
         """
@@ -236,44 +287,54 @@ class ImageViewer(QMainWindow):
     def _create_controls(self) -> QWidget:
         """Create the control sidebar with sliders and metadata panels."""
         controls_layout = QVBoxLayout()
-        controls_layout.setContentsMargins(0, 0, 8, 0)
+        controls_layout.setContentsMargins(12, 12, 12, 12)
+        controls_layout.setSpacing(14)
 
-        slice_label = QLabel("Slice")
-        slice_label.setStyleSheet("font-weight: bold;")
-        controls_layout.addWidget(slice_label)
-
+        slice_section = self._make_section("Slice Navigation")
+        slice_layout = slice_section.layout()
+        self.slice_value_label = QLabel(f"1 / {self.dicom.shape[-1]}")
+        slice_layout.addWidget(self.slice_value_label)
         self.slice_slider = QSlider(Qt.Vertical)
         self.slice_slider.setMinimum(0)
         self.slice_slider.setMaximum(self.dicom.shape[-1] - 1)
         self.slice_slider.setValue(0)
-        self.slice_slider.valueChanged.connect(self.change_slice)
-        controls_layout.addWidget(self.slice_slider)
+        self.slice_slider.valueChanged.connect(self._on_slice_slider_changed)
+        slice_layout.addWidget(self.slice_slider)
+        controls_layout.addWidget(slice_section)
 
-        param_label = QLabel("Parameter Overlay")
-        param_label.setStyleSheet("font-weight: bold; margin-top: 12px;")
-        controls_layout.addWidget(param_label)
-
+        parameter_section = self._make_section("Parameter Overlay")
+        param_layout = parameter_section.layout()
         self.parameter_combo = QComboBox()
         self.parameter_combo.addItems([name.upper() for name in self.parameter_names])
         self.parameter_combo.setCurrentIndex(self.current_param_index)
         self.parameter_combo.currentIndexChanged.connect(self.on_parameter_changed)
-        controls_layout.addWidget(self.parameter_combo)
+        param_layout.addWidget(self.parameter_combo)
+        self.parameter_summary = QLabel(
+            f"Highlighting: {self.parameter_names[self.current_param_index].upper()}"
+        )
+        self.parameter_summary.setStyleSheet("color: #a0a7c2; font-size: 12px;")
+        param_layout.addWidget(self.parameter_summary)
+        controls_layout.addWidget(parameter_section)
 
-        alpha_label = QLabel("Overlay Opacity")
-        alpha_label.setStyleSheet("font-weight: bold; margin-top: 12px;")
-        controls_layout.addWidget(alpha_label)
-
+        alpha_section = self._make_section("Overlay Opacity")
+        alpha_layout = alpha_section.layout()
+        self.alpha_value_label = QLabel(f"{self.alpha:.2f}")
+        alpha_layout.addWidget(self.alpha_value_label)
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(self.alpha * 100))
         self.alpha_slider.valueChanged.connect(self.on_alpha_changed)
-        controls_layout.addWidget(self.alpha_slider)
+        alpha_layout.addWidget(self.alpha_slider)
+        controls_layout.addWidget(alpha_section)
 
-        self.colorbar_fig = Figure(figsize=(1.0, 2.4))
+        color_section = self._make_section("Color Scale")
+        color_layout = color_section.layout()
+        self.colorbar_fig = Figure(figsize=(1.2, 2.8))
         self.colorbar_canvas = FigureCanvas(self.colorbar_fig)
         self.colorbar_ax = self.colorbar_fig.add_subplot(111)
         self.colorbar_ax.set_facecolor("#111111")
-        controls_layout.addWidget(self.colorbar_canvas)
+        color_layout.addWidget(self.colorbar_canvas)
+        controls_layout.addWidget(color_section)
 
         self.info_panel = InfoPanel(self.parameter_names)
         controls_layout.addWidget(self.info_panel)
@@ -282,6 +343,18 @@ class ImageViewer(QMainWindow):
         widget = QWidget()
         widget.setLayout(controls_layout)
         return widget
+
+    def _make_section(self, title: str) -> QFrame:
+        """Create a styled section container."""
+        frame = QFrame()
+        frame.setObjectName("sectionFrame")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(6)
+        label = QLabel(title.upper())
+        label.setObjectName("sectionTitle")
+        layout.addWidget(label)
+        return frame
 
     def _compute_color_range(self) -> tuple[float, float]:
         """Calculate reasonable color limits for the overlay."""
@@ -309,15 +382,25 @@ class ImageViewer(QMainWindow):
         self.colorbar_ax.imshow(gradient, aspect="auto", cmap="jet", origin="lower")
         self.colorbar_ax.set_xticks([])
         self.colorbar_ax.set_yticks([0, 255])
-        self.colorbar_ax.set_yticklabels([f"{vmin:.1f}", f"{vmax:.1f}"])
+        self.colorbar_ax.set_yticklabels(
+            [f"{vmin:.1f}", f"{vmax:.1f}"], color="#dcdcdc"
+        )
         self.colorbar_ax.set_title(
-            self.parameter_names[self.current_param_index], fontsize=10
+            self.parameter_names[self.current_param_index].upper(),
+            fontsize=10,
+            color="#f8f8f8",
         )
         self.colorbar_canvas.draw()
+        if hasattr(self, "parameter_summary"):
+            self.parameter_summary.setText(
+                f"Highlighting: {self.parameter_names[self.current_param_index].upper()}"
+            )
 
     def on_alpha_changed(self, value: int) -> None:
         """Handle overlay opacity changes."""
         self.alpha = value / 100 or 0.01
+        if hasattr(self, "alpha_value_label"):
+            self.alpha_value_label.setText(f"{self.alpha:.2f}")
         self.display_slice()
 
     def on_parameter_changed(self, index: int) -> None:
@@ -326,6 +409,10 @@ class ImageViewer(QMainWindow):
             return
         self.current_param_index = index
         self.color_map = self.fit_maps[index]
+        if hasattr(self, "parameter_summary"):
+            self.parameter_summary.setText(
+                f"Highlighting: {self.parameter_names[index].upper()}"
+            )
         self.update_colorbar()
         self.display_slice()
 
@@ -495,7 +582,7 @@ class InfoPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        self.instructions = QLabel("Click on the image to inspect a voxel.")
+        self.instructions = QLabel("Click inside the image to inspect a voxel.")
         self.instructions.setWordWrap(True)
         self.instructions.setStyleSheet("color: #888;")
         layout.addWidget(self.instructions)
@@ -504,9 +591,12 @@ class InfoPanel(QWidget):
         self.coord_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(self.coord_label)
 
-        self.value_label = QLabel("Parameters will appear here.")
-        self.value_label.setWordWrap(True)
-        layout.addWidget(self.value_label)
+        self.table_label = QLabel("<i>No voxel selected</i>")
+        self.table_label.setWordWrap(True)
+        self.table_label.setTextFormat(Qt.RichText)
+        self.table_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.table_label.setStyleSheet("font-family: 'JetBrains Mono', monospace;")
+        layout.addWidget(self.table_label)
 
         self.setLayout(layout)
 
@@ -519,14 +609,26 @@ class InfoPanel(QWidget):
     ) -> None:
         """Update the displayed coordinate/parameter information."""
         self.coord_label.setText(f"Voxel: x={x}, y={y}, slice={slice_idx}")
-        lines = []
+        rows = []
         for name, value in zip(self.parameter_names, params):
             if np.isnan(value):
                 continue
-            lines.append(f"{name.upper()}: {value:.2f}")
-        if not lines:
-            lines = ["No fit available"]
-        self.value_label.setText("\n".join(lines))
+            rows.append(
+                f"<tr><td style='padding-right:12px;'>{name.upper()}</td>"
+                f"<td style='text-align:right;'>{value:.2f}</td></tr>"
+            )
+        if not rows:
+            rows_html = "<tr><td colspan='2'>No fit available</td></tr>"
+        else:
+            rows_html = "".join(rows)
+        html = (
+            "<table style='width:100%; font-size:12px;'>"
+            "<tbody>"
+            f"{rows_html}"
+            "</tbody>"
+            "</table>"
+        )
+        self.table_label.setText(html)
 
 
 def example_1():
