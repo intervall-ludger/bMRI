@@ -21,8 +21,9 @@ def t2star_fitting_example():
         Path(__file__).parent
         / "test"
         / "resources"
-        / "20211206_1038"
-        / "7_T2-star_map_3D_cor_18818"
+        / "Mrtc-Studie_Cartilage_transplantation_05_GAPF97478"
+        / "20211125_0925"
+        / "7_T2-star_map_3D_cor_03445"
     )
     if not t2_star_folder.exists():
         raise EnvironmentError(error_text)
@@ -42,8 +43,9 @@ def t2_fitting_example():
         Path(__file__).parent
         / "test"
         / "resources"
-        / "20211206_1038"
-        / "10_T2_map_cor_25681"
+        / "Mrtc-Studie_Cartilage_transplantation_05_GAPF97478"
+        / "20211125_0925"
+        / "10_T2_map_cor_10282"
     )
     if not t2_folder.exists():
         raise FileNotFoundError(error_text)
@@ -53,19 +55,26 @@ def t2_fitting_example():
 
 # T1rho
 def t1rho_fitting_example():
+    # T1rho expects parent folder containing subdirectories for each TSL timepoint
     t1rho_folder = (
-        Path(__file__).parent / "test" / "resources" / "20211206_1038" / "T1rho"
+        Path(__file__).parent
+        / "test"
+        / "resources"
+        / "Mrtc-Studie_Cartilage_transplantation_05_GAPF97478"
+        / "20211125_0925"
+        / "T1rho"
     )
     if not t1rho_folder.exists():
         raise EnvironmentError(error_text)
     t1rho = T1rho_T2prep(
-        dim=3, boundary=([1, 40, -0.4], [3, 150, 0.4]), normalize=True, config=None
+        dim=3, boundary=([1, 1, -1000], [10000, 500, 1000]), normalize=False, config=None
     )
     tsl = t1rho.get_TSL(10, 30)
     t1rho.run(
         dicom_folder=t1rho_folder,
         mask_file=t1rho_folder / "mask.nii.gz",
         tsl=tsl,
+        min_r2=0.3,
     )
 
 

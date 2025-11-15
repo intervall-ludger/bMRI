@@ -160,7 +160,7 @@ class T1rho_T2prep(AbstractFitting):
         """
 
         # Call the fit method from the parent class using the provided dicom, mask, and x data
-        mask = mask[:, :, ::-1]
+        # Note: Removed mask z-axis inversion to align with DICOM data orientation
         fit_maps, r2_map = super().fit(dicom, mask, x, pools=pools, min_r2=min_r2)
 
         return fit_maps, r2_map
@@ -255,10 +255,10 @@ class T1rho_T2prep(AbstractFitting):
             raise NotImplementedError
 
         order = self.check_order(dcm_files)
-        # echos, z, x, y --> echos, x, y, z
+        # echos, z, rows, cols --> echos, rows, cols, z
         dicom = (
             np.array([get_dcm_array(dcm_files[o]) for o in order])
-            .transpose(0, 3, 2, 1)
+            .transpose(0, 2, 3, 1)
             .astype("int16")
         )
         return dicom, None

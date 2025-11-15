@@ -23,13 +23,48 @@ The codebase is structured around a few key components:
 
 ## Installation and Requirements
 
+### Using uv (recommended)
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver.
+
 #### MacOS:
 
 ```shell
+# Install system dependencies
 brew install qt
+
+# Install uv (if not already installed)
+brew install uv
+
+# Install bMRI with all dependencies
+uv pip install -e .
+
+# Or install with development dependencies
+uv pip install -e ".[dev]"
 ```
 
-You can install all requirements with the command:`pip install -r requirements.txt`. 
+#### Linux:
+
+```shell
+# Install system dependencies
+sudo apt-get install qt5-default libgl1-mesa-glx
+
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install bMRI
+uv pip install -e ".[dev]"
+```
+
+### Using pip (traditional)
+
+```shell
+# MacOS
+brew install qt
+
+# Install dependencies
+pip install -r requirements.txt
+``` 
 
 ## Usage
 
