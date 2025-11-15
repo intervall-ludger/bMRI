@@ -134,6 +134,8 @@ def launch_t2star_viewer(
     alpha: float = 0.35,
     auto_cut: bool = True,
     normalize: bool = True,
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> None:
     """Launch the PyQt viewer for T2*/T2 results."""
     dicom_path, params_path, times, parameter_index = prepare_t2star_viewer_inputs(
@@ -157,6 +159,8 @@ def launch_t2star_viewer(
         alpha=alpha,
         normalize=normalize,
         auto_cut=auto_cut,
+        vmin=vmin,
+        vmax=vmax,
     )
     viewer.setWindowTitle("bMRI Viewer – T2*")
     viewer.show()
@@ -208,6 +212,20 @@ def view_t2star_command(
             help="Overlay opacity for the colored map",
         ),
     ] = 0.35,
+    vmin: Annotated[
+        float | None,
+        typer.Option(
+            "--vmin",
+            help="Lower bound for the color scale (auto if omitted)",
+        ),
+    ] = None,
+    vmax: Annotated[
+        float | None,
+        typer.Option(
+            "--vmax",
+            help="Upper bound for the color scale (auto if omitted)",
+        ),
+    ] = None,
     auto_crop: Annotated[
         bool,
         typer.Option(
@@ -241,6 +259,8 @@ def view_t2star_command(
             alpha=alpha,
             auto_cut=auto_crop,
             normalize=normalize,
+            vmin=vmin,
+            vmax=vmax,
         )
     except (FileNotFoundError, ValueError) as exc:
         console.print(f"[bold red]✗ Viewer error:[/bold red] {exc}")

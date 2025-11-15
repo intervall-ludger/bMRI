@@ -7,10 +7,12 @@ from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QComboBox,
+    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QPushButton,
     QSlider,
     QSizePolicy,
     QVBoxLayout,
@@ -87,6 +89,8 @@ class ImageViewer(QMainWindow):
         alpha: float = 0.35,
         normalize: bool = True,
         auto_cut: bool = True,
+        vmin: float | None = None,
+        vmax: float | None = None,
     ):
         """
         Initialize the ImageViewer.
@@ -117,6 +121,8 @@ class ImageViewer(QMainWindow):
         self.norm = normalize
         self.fit_maps = np.array(fit_maps)
         self.fit_function = fit_function
+        self.vmin_override = vmin
+        self.vmax_override = vmax
         self.parameter_names = list(get_function_parameter(self.fit_function))
         if not self.parameter_names:
             self.parameter_names = [f"Param {idx+1}" for idx in range(self.fit_maps.shape[0])]
@@ -333,11 +339,28 @@ class ImageViewer(QMainWindow):
 
         color_section = self._make_section("Color Scale")
         color_layout = color_section.layout()
-        self.colorbar_fig = Figure(figsize=(1.2, 2.8))
+        self.colorbar_fig = Figure(figsize=(1.8, 3.0))
+        self.colorbar_fig.patch.set_facecolor("#ffffff")
         self.colorbar_canvas = FigureCanvas(self.colorbar_fig)
+        self.colorbar_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.colorbar_ax = self.colorbar_fig.add_subplot(111)
         self.colorbar_ax.set_facecolor("#111111")
         color_layout.addWidget(self.colorbar_canvas)
+        spin_layout = QHBoxLayout()
+        self.vmin_spin = self._make_spinbox("Min")
+        self.vmax_spin = self._make_spinbox("Max")
+        self.vmin_spin.valueChanged.connect(self.on_color_spin_changed)
+        self.vmax_spin.valueChanged.connect(self.on_color_spin_changed)
+        spin_layout.addWidget(self.vmin_spin)
+        spin_layout.addWidget(self.vmax_spin)
+        color_layout.addLayout(spin_layout)
+        self.reset_color_btn = QPushButton("Auto-scale")
+        self.reset_color_btn.clicked.connect(self.on_color_reset)
+        self.reset_color_btn.setStyleSheet(
+            "background-color:#1f2435; border:1px solid #2e3550; padding:6px; border-radius:4px; color:#e0e6ff;"
+        )
+        color_layout.addWidget(self.reset_color_btn)
+        self._sync_color_spins()
         controls_layout.addWidget(color_section)
 
         self.info_panel = InfoPanel(self.parameter_names)
@@ -360,8 +383,28 @@ class ImageViewer(QMainWindow):
         layout.addWidget(label)
         return frame
 
+    def _make_spinbox(self, placeholder: str) -> QDoubleSpinBox:
+        """Create a compact spinbox for color scale input."""
+        spin = QDoubleSpinBox()
+        spin.setDecimals(2)
+        spin.setRange(-1e6, 1e6)
+        spin.setButtonSymbols(QDoubleSpinBox.NoButtons)
+        spin.setMinimumWidth(70)
+        spin.setSpecialValueText(placeholder)
+        spin.setStyleSheet(
+            "background-color:#1b1e29; border:1px solid #2a2f3f; padding:4px; border-radius:4px; color:#e0e0e0;"
+        )
+        return spin
+
     def _compute_color_range(self) -> tuple[float, float]:
         """Calculate reasonable color limits for the overlay."""
+        if self.vmin_override is not None or self.vmax_override is not None:
+            finite = self.color_map[np.isfinite(self.color_map)] if self.color_map is not None else np.array([0.0, 1.0])
+            vmin = float(self.vmin_override) if self.vmin_override is not None else float(np.nanmin(finite))
+            vmax = float(self.vmax_override) if self.vmax_override is not None else float(np.nanmax(finite))
+            if vmin >= vmax:
+                vmax = vmin + 1.0
+            return vmin, vmax
         if self.color_map is None:
             return (0.0, 1.0)
         finite = self.color_map[np.isfinite(self.color_map)]
@@ -380,15 +423,19 @@ class ImageViewer(QMainWindow):
 
         vmin, vmax = self._compute_color_range()
         self.colorbar_range = (vmin, vmax)
+        self._sync_color_spins()
 
         gradient = np.linspace(0, 1, 256).reshape(256, 1)
         self.colorbar_ax.clear()
+        # Leave a larger left margin (white space) while keeping a compact bar
+        self.colorbar_ax.set_position([0.35, 0.05, 0.4, 0.9])
         self.colorbar_ax.imshow(gradient, aspect="auto", cmap="jet", origin="lower")
         self.colorbar_ax.set_xticks([])
-        self.colorbar_ax.set_yticks([0, 255])
-        self.colorbar_ax.set_yticklabels(
-            [f"{vmin:.1f}", f"{vmax:.1f}"], color="#dcdcdc"
-        )
+        ticks = [0, 128, 255]
+        tick_labels = [f"{vmin:.2f}", f"{(vmin + vmax)/2:.2f}", f"{vmax:.2f}"]
+        self.colorbar_ax.set_yticks(ticks)
+        self.colorbar_ax.set_yticklabels(tick_labels, color="#dcdcdc")
+        self.colorbar_ax.tick_params(axis="y", colors="#dcdcdc", labelsize=9)
         self.colorbar_ax.set_title(
             self.parameter_names[self.current_param_index].upper(),
             fontsize=10,
@@ -413,6 +460,9 @@ class ImageViewer(QMainWindow):
             return
         self.current_param_index = index
         self.color_map = self.fit_maps[index]
+        # Reset overrides when switching parameters to avoid stale values
+        self.vmin_override = None
+        self.vmax_override = None
         if hasattr(self, "parameter_summary"):
             self.parameter_summary.setText(
                 f"Highlighting: {self.parameter_names[index].upper()}"
@@ -450,6 +500,34 @@ class ImageViewer(QMainWindow):
             raw_data /= raw_data.max()
         self.fit_function_widget.update_plot(pixel_params, raw_data)
         self.info_panel.update_info(x, y, self.current_slice, pixel_params)
+
+    def on_color_spin_changed(self) -> None:
+        """Apply manual color limits from spin boxes."""
+        self.vmin_override = float(self.vmin_spin.value())
+        self.vmax_override = float(self.vmax_spin.value())
+        if self.vmin_override >= self.vmax_override:
+            self.vmax_override = self.vmin_override + 1.0
+        self.update_colorbar()
+        self.display_slice()
+
+    def _sync_color_spins(self) -> None:
+        """Sync spin boxes with current colorbar range."""
+        if not hasattr(self, "vmin_spin") or not hasattr(self, "vmax_spin"):
+            return
+        vmin, vmax = self.colorbar_range
+        self.vmin_spin.blockSignals(True)
+        self.vmax_spin.blockSignals(True)
+        self.vmin_spin.setValue(vmin)
+        self.vmax_spin.setValue(vmax)
+        self.vmin_spin.blockSignals(False)
+        self.vmax_spin.blockSignals(False)
+
+    def on_color_reset(self) -> None:
+        """Reset to automatic color scaling."""
+        self.vmin_override = None
+        self.vmax_override = None
+        self.update_colorbar()
+        self.display_slice()
 
 
 class FitFunctionWidget(QWidget):
@@ -524,17 +602,8 @@ class FitFunctionWidget(QWidget):
         :param params: List of new parameters, optional.
         :param raw_data: List of new raw data, optional.
         """
-        results = None
         if params is not None:
             self.params = params
-            items = [
-                (_, __)
-                for _, __ in zip(get_function_parameter(self.fit_function), params)
-            ]
-            results = "\n"
-            for item in items:
-                results += f"{item[0]}: {item[1]}\n"
-            results = results[:-2]
         if raw_data is not None:
             self.y_raw = raw_data
         self.y_fit = self.fit_function(self.x_fit, *self.params)
@@ -562,16 +631,6 @@ class FitFunctionWidget(QWidget):
         self.axes.set_ylabel("Signal", color="#bbbbbb")
         self.axes.legend(loc="upper right", fontsize=8)
         self.axes.grid(color="#222222", linestyle="--", linewidth=0.5)
-        if results is not None:
-            self.axes.text(
-                0.5,
-                1,
-                results,
-                ha="center",
-                va="top",
-                fontsize=15,
-                transform=self.axes.transAxes,
-            )
 
         self.canvas.draw()
 
