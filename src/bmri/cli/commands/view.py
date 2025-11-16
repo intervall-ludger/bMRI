@@ -10,6 +10,7 @@ import numpy as np
 import typer
 from rich.panel import Panel
 
+from bmri.cli.legacy_imports import ensure_project_root_on_path, import_legacy_module
 from bmri.logger import console, get_logger
 
 logger = get_logger(__name__)
@@ -30,30 +31,23 @@ PARAMETER_ALIASES = {
 }
 
 
-def _project_root() -> Path:
-    """Return project root so legacy modules can be imported."""
-    return Path(__file__).resolve().parent.parent.parent.parent.parent
-
-
 def _import_function_metadata():
     """Import only the components required for parameter metadata."""
-    if str(_project_root()) not in sys.path:
-        sys.path.insert(0, str(_project_root()))
+    ensure_project_root_on_path()
 
-    from src.Fitting.T2_T2star import mono_exp
-    from src.Utilitis.utils import get_function_parameter
+    mono_exp = import_legacy_module("src.Fitting.T2_T2star").mono_exp
+    get_function_parameter = import_legacy_module("src.Utilitis.utils").get_function_parameter
 
     return mono_exp, get_function_parameter
 
 
 def _import_viewer_components():
     """Import the PyQt viewer and fitting function."""
-    if str(_project_root()) not in sys.path:
-        sys.path.insert(0, str(_project_root()))
+    ensure_project_root_on_path()
 
-    from PyQt5.QtWidgets import QApplication
-    from src.Fitting.T2_T2star import mono_exp
-    from src.Visualization.image_viewer import ImageViewer
+    QApplication = import_legacy_module("PyQt5.QtWidgets").QApplication
+    mono_exp = import_legacy_module("src.Fitting.T2_T2star").mono_exp
+    ImageViewer = import_legacy_module("src.Visualization.image_viewer").ImageViewer
 
     return QApplication, ImageViewer, mono_exp
 
