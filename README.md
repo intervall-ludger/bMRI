@@ -25,7 +25,7 @@
 
 - ✨ **Modern CLI** - Beautiful Typer-based interface with Rich terminal output
 - 🛡️ **Robust Error Handling** - Structured exceptions and comprehensive validation
-- 📝 **Type Safety** - Full type hints with mypy support
+- 📝 **Type Safety** - Full type hints with ty support
 - ⚙️ **Configuration Management** - TOML-based configs with Pydantic validation
 - 📊 **Progress Tracking** - Real-time progress bars and status updates
 - 🎨 **Beautiful Output** - Colored, formatted terminal output with Rich
@@ -661,8 +661,8 @@ pytest -vv
 # Format code with black
 black src/
 
-# Type checking with mypy
-mypy src/bmri/
+# Type checking with ty (from Astral)
+uv run ty check src/bmri
 
 # Run pre-commit hooks
 pre-commit run --all-files

@@ -7,7 +7,9 @@
       "Bash(uv pip compile:*)",
       "Bash(uv add:*)",
       "Bash(bmri fit t2star:*)",
-      "Bash(bmri:*)"
+      "Bash(bmri:*)",
+      "Bash(uv pip:*)",
+      "Bash(uv run pytest:*)"
     ],
     "deny": [],
     "ask": []

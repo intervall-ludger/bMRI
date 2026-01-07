@@ -73,7 +73,7 @@ def test_launch_t2star_viewer_uses_overrides(tmp_path: Path, monkeypatch: pytest
 
     captured: dict[str, object] = {}
 
-    def fake_prepare(*_args, **_kwargs):
+    def fake_prepare(*_args: object, **_kwargs: object):
         return (
             tmp_path / "d.nii.gz",
             tmp_path / "p.nii.gz",
@@ -83,26 +83,26 @@ def test_launch_t2star_viewer_uses_overrides(tmp_path: Path, monkeypatch: pytest
 
     class FakeApp:
         @classmethod
-        def instance(cls):
+        def instance(cls) -> "FakeApp | None":
             return None
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: object, **kwargs: object) -> None:
             pass
 
-        def exec(self):
+        def exec(self) -> None:
             captured["exec"] = True
 
     class FakeViewer:
-        def __init__(self):
+        def __init__(self) -> None:
             captured["viewer_created"] = True
 
-        def start(self, **kwargs):
+        def start(self, **kwargs: object) -> None:
             captured["start_kwargs"] = kwargs
 
-        def setWindowTitle(self, title):
+        def setWindowTitle(self, title: str) -> None:
             captured["title"] = title
 
-        def show(self):
+        def show(self) -> None:
             captured["show"] = True
 
     def fake_import():

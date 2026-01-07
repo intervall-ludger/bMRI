@@ -1,8 +1,9 @@
+from typing import Callable, Sequence, Tuple
+
 import numpy as np
-from typing import Callable
 
 
-def get_function_parameter(f: Callable) -> tuple:
+def get_function_parameter(f: Callable[..., object]) -> Tuple[str, ...]:
     """
     Get the names of the parameters of a given function.
 

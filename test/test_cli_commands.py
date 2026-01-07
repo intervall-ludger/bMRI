@@ -51,7 +51,7 @@ class FakeT2StarFitter:
     def __init__(self, *args, **kwargs) -> None:
         self.kwargs = kwargs
 
-    def run(self, *, dicom_folder: Path, mask_file: Path, **kwargs) -> None:  # type: ignore[override]
+    def run(self, *, dicom_folder: Path, mask_file: Path, **kwargs: object) -> None:
         _write_fake_results(dicom_folder, ["S0", "offset", "t2_t2star"])
 
 
@@ -61,7 +61,7 @@ class FakeT1rhoFitter:
     def __init__(self, *args, **kwargs) -> None:
         self.kwargs = kwargs
 
-    def run(self, *, dicom_folder: Path, mask_file: Path, **kwargs) -> None:  # type: ignore[override]
+    def run(self, *, dicom_folder: Path, mask_file: Path, **kwargs: object) -> None:
         _write_fake_results(dicom_folder, ["S0", "offset", "t1rho"])
 
 

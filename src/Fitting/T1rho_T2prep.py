@@ -1,13 +1,17 @@
 from pathlib import Path
-from typing import Union, Tuple, Dict, List
+from typing import Callable, Dict, List, Tuple, Union
+
 import numpy as np
 from numba import njit
+
 from src.Fitting.AbstractFitting import AbstractFitting, cpu_count
-from src.Utilitis.read import get_dcm_list, get_dcm_array, split_dcm_list
-from src.Utilitis import save_results, load_nii, save_nii
+from src.Utilitis import load_nii, save_nii, save_results
+from src.Utilitis.read import get_dcm_array, get_dcm_list, split_dcm_list
 
 
-def fit_T1rho_wrapper_raush(TR: float, T1: float, alpha: float):
+def fit_T1rho_wrapper_raush(
+    TR: float, T1: float, alpha: float
+) -> Callable[[np.ndarray, float, float, float], np.ndarray]:
     """
     Creates a T1rho fitting function based on Rausch et al.
 
@@ -30,7 +34,7 @@ def fit_T1rho_wrapper_raush(TR: float, T1: float, alpha: float):
 
 def fit_T1rho_wrapper_aronen(
     TR: float, T1: float, alpha: float, TE: float, T2star: float
-):
+) -> Callable[[np.ndarray, float, float, float], np.ndarray]:
     """
     Creates a T1rho fitting function based on Aronen et al.
 
@@ -61,7 +65,7 @@ def fit_T1rho_wrapper_aronen(
     return fit
 
 
-def fit_mono_exp_wrapper():
+def fit_mono_exp_wrapper() -> Callable[[np.ndarray, float, float, float], np.ndarray]:
     """
     Creates a mono-exponential fitting function.
 
@@ -76,7 +80,9 @@ def fit_mono_exp_wrapper():
     return mono_exp
 
 
-def fit_T2_wrapper_aronen(TR: float, T1: float, alpha: float, TE: float, T2star: float):
+def fit_T2_wrapper_aronen(
+    TR: float, T1: float, alpha: float, TE: float, T2star: float
+) -> Callable[[np.ndarray, float, float, float], np.ndarray]:
     @njit
     def fit(x: np.ndarray, S0: float, t2: float, offset: float) -> np.ndarray:
         tau = TR - x

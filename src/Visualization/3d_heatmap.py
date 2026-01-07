@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
 from mayavi import mlab
@@ -6,11 +7,17 @@ from tvtk.api import tvtk
 
 from src.Fitting.T1rho_T2prep import T1rho_T2prep
 from src.Fitting.T2_T2star import T2_T2star
-from src.Utilitis.read import get_dcm_list, get_dcm_array
-from src.Utilitis.read import load_nii
+from src.Utilitis.read import get_dcm_array, get_dcm_list, load_nii
 
 
-def save_img(file_path, filename, dicom_processor, spacing, min_val, max_val):
+def save_img(
+    file_path: Path,
+    filename: str,
+    dicom_processor: T1rho_T2prep | T2_T2star | None,
+    spacing: Sequence[float],
+    min_val: float,
+    max_val: float,
+) -> None:
     fig = mlab.figure(bgcolor=(0, 0, 0), size=(800, 800))
 
     image = load_nii(file_path).array
@@ -113,16 +120,16 @@ def save_img(file_path, filename, dicom_processor, spacing, min_val, max_val):
 
 
 def process_image(
-    pre_post,
-    imgs,
-    knee,
-    file_pattern,
-    output_suffix,
-    dicom_processor,
-    spacing,
-    min_val,
-    max_val,
-):
+    pre_post: Path,
+    imgs: Path,
+    knee: Path,
+    file_pattern: str,
+    output_suffix: str,
+    dicom_processor: T1rho_T2prep | T2_T2star | None,
+    spacing: Sequence[float],
+    min_val: float,
+    max_val: float,
+) -> None:
     nii_file = [_ for _ in pre_post.glob(file_pattern)][0]
     save_img(
         nii_file,

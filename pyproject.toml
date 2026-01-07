@@ -54,6 +54,7 @@ dependencies = [
     "pydantic>=2.12.4",
     "pydantic-settings>=2.12.0",
     "tomli>=2.3.0",
+    "natsort>=8.4.0",
 ]
 
 [project.optional-dependencies]
@@ -105,6 +106,7 @@ packages = ["bmri", "bmri.cli", "bmri.cli.commands", "bmri.core", "bmri.core.fit
 
 [tool.setuptools.package-data]
 src = ["py.typed"]
+bmri = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
@@ -154,3 +156,11 @@ extend-exclude = '''
   | dist
 )/
 '''
+
+[tool.ty.environment]
+python-version = "3.10"
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.9",
+]

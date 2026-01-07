@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Callable
 
 import numpy as np
 import typer
@@ -31,7 +31,9 @@ PARAMETER_ALIASES = {
 }
 
 
-def _import_function_metadata():
+def _import_function_metadata() -> tuple[
+    Callable[..., object], Callable[[Callable[..., object]], list[str]]
+]:
     """Import only the components required for parameter metadata."""
     ensure_project_root_on_path()
 
@@ -41,7 +43,7 @@ def _import_function_metadata():
     return mono_exp, get_function_parameter
 
 
-def _import_viewer_components():
+def _import_viewer_components() -> tuple[type[object], type[object], Callable[..., object]]:
     """Import the PyQt viewer and fitting function."""
     ensure_project_root_on_path()
 
