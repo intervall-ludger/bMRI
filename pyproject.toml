@@ -55,6 +55,8 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "tomli>=2.3.0",
     "natsort>=8.4.0",
+    "openpyxl>=3.1.5",
+    "maskregistration",
 ]
 
 [project.optional-dependencies]
@@ -159,6 +161,9 @@ extend-exclude = '''
 
 [tool.ty.environment]
 python-version = "3.10"
+
+[tool.uv.sources]
+maskregistration = { git = "https://github.com/MPR-UKD/MaskRegistration.git" }
 
 [dependency-groups]
 dev = [

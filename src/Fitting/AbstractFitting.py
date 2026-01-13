@@ -70,6 +70,13 @@ class AbstractFitting(ABC):
             mask = np.expand_dims(mask, axis=2)
             dicom = np.expand_dims(dicom, axis=3)
         assert dicom.shape[0] == len(x)
+
+        if mask.shape != dicom.shape[1:]:
+            raise ValueError(
+                f"Mask shape {mask.shape} does not match DICOM data shape {dicom.shape[1:]}. "
+                "Ensure the mask was created from the same image data."
+            )
+
         # Get the number of parameters in the fit function
         num_params = len(curve_fit(self.fit_function, x, dicom[:, 0, 0, 0])[0])
 
