@@ -127,6 +127,7 @@ def launch_t2star_viewer(
     dicom_file: Path | None = None,
     params_file: Path | None = None,
     times_file: Path | None = None,
+    mask_file: Path | None = None,
     alpha: float = 0.35,
     auto_cut: bool = True,
     normalize: bool = True,
@@ -157,6 +158,7 @@ def launch_t2star_viewer(
         auto_cut=auto_cut,
         vmin=vmin,
         vmax=vmax,
+        mask_file=mask_file,
     )
     viewer.setWindowTitle("bMRI Viewer – T2*")
     viewer.show()

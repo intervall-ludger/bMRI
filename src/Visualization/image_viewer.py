@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QSlider,
     QSizePolicy,
     QVBoxLayout,
@@ -28,6 +29,22 @@ from src.Utilitis import load_nii
 from src.Utilitis.utils import get_function_parameter
 
 
+def get_crop_window(heat_map: np.ndarray, padding: int = 10) -> tuple[int, int]:
+    """Calculate crop window from heatmap non-zero region."""
+    not_nan_indices = np.where(heat_map[0] != 0)
+    if len(not_nan_indices[0]) == 0:
+        return (0, heat_map.shape[1])
+    slice_x = (
+        max(0, not_nan_indices[0].min() - padding),
+        min(heat_map.shape[1], not_nan_indices[0].max() + padding),
+    )
+    slice_y = (
+        max(0, not_nan_indices[1].min() - padding),
+        min(heat_map.shape[2], not_nan_indices[1].max() + padding),
+    )
+    return (max(slice_x[0], slice_y[0]), max(slice_x[1], slice_y[1]))
+
+
 def crop_to_heatmap(
     dicom_image: np.ndarray, heat_map: np.ndarray, padding: int = 10
 ) -> tuple:
@@ -39,20 +56,7 @@ def crop_to_heatmap(
     :param padding: Additional padding to be added around the non-NaN region of the heatmap.
     :return: A tuple containing the cropped DICOM image and heatmap.
     """
-    # Get the indices of non-NaN values
-    not_nan_indices = np.where(heat_map[0] != 0)
-
-    # Determine the slice to cut out, including the padding
-    slice_x = (
-        max(0, not_nan_indices[0].min() - padding),
-        min(dicom_image.shape[1], not_nan_indices[0].max() + padding),
-    )
-    slice_y = (
-        max(0, not_nan_indices[1].min() - padding),
-        min(dicom_image.shape[2], not_nan_indices[1].max() + padding),
-    )
-    window = (max(slice_x[0], slice_y[0]), max(slice_x[1], slice_y[1]))
-    # Cut out the desired region
+    window = get_crop_window(heat_map, padding)
     dicom_image_cropped = dicom_image[
         :, window[0] : window[1], window[0] : window[1], :
     ]
@@ -91,6 +95,7 @@ class ImageViewer(QMainWindow):
         auto_cut: bool = True,
         vmin: float | None = None,
         vmax: float | None = None,
+        mask_file: Path | None = None,
     ):
         """
         Initialize the ImageViewer.
@@ -108,8 +113,18 @@ class ImageViewer(QMainWindow):
         if isinstance(fit_maps, Path):
             fit_maps = load_nii(fit_maps).array
             fit_maps[fit_maps == -1] = 0
+
+        # Load mask before cropping so we can crop it with the same window
+        mask_array = None
+        if mask_file is not None and Path(mask_file).exists():
+            mask_array = load_nii(mask_file).array
+
         if auto_cut:
-            dicom, fit_maps = crop_to_heatmap(dicom, fit_maps, 50)
+            window = get_crop_window(fit_maps, 50)
+            dicom = dicom[:, window[0]:window[1], window[0]:window[1], :]
+            fit_maps = fit_maps[:, window[0]:window[1], window[0]:window[1], :]
+            if mask_array is not None:
+                mask_array = mask_array[window[0]:window[1], window[0]:window[1], :]
 
         if isinstance(time_points, np.ndarray):
             time_points = list(time_points)
@@ -130,9 +145,15 @@ class ImageViewer(QMainWindow):
         self.current_param_index = min(max(self.current_param_index, 0), len(self.parameter_names) - 1)
         self.color_map = self.fit_maps[self.current_param_index]
         self.colorbar_range = self._compute_color_range()
-        self.scaling_factor = calc_scaling_factor(dicom.shape)
-        self.current_slice = 0
+        self.base_scaling_factor = calc_scaling_factor(dicom.shape)
+        self.zoom_level = 1.0
+        self.scaling_factor = self.base_scaling_factor
+        self.current_slice = self._find_best_initial_slice()
         self.current_params = self.fit_maps[:, :, :, self.current_slice]
+
+        # Mask data for ROI statistics (already cropped above if auto_cut)
+        self.mask_file = mask_file
+        self.mask_data = mask_array
 
         # Create a label to display the image
         self.image_label = QLabel(self)
@@ -299,12 +320,12 @@ class ImageViewer(QMainWindow):
 
         slice_section = self._make_section("Slice Navigation")
         slice_layout = slice_section.layout()
-        self.slice_value_label = QLabel(f"1 / {self.dicom.shape[-1]}")
+        self.slice_value_label = QLabel(f"{self.current_slice + 1} / {self.dicom.shape[-1]}")
         slice_layout.addWidget(self.slice_value_label)
         self.slice_slider = QSlider(Qt.Horizontal)
         self.slice_slider.setMinimum(0)
         self.slice_slider.setMaximum(self.dicom.shape[-1] - 1)
-        self.slice_slider.setValue(0)
+        self.slice_slider.setValue(self.current_slice)
         self.slice_slider.valueChanged.connect(self._on_slice_slider_changed)
         self.slice_slider.setMinimumHeight(28)
         self.slice_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -337,6 +358,21 @@ class ImageViewer(QMainWindow):
         alpha_layout.addWidget(self.alpha_slider)
         controls_layout.addWidget(alpha_section)
 
+        zoom_section = self._make_section("Zoom")
+        zoom_layout = zoom_section.layout()
+        self.zoom_value_label = QLabel(f"{self.zoom_level:.1f}x")
+        zoom_layout.addWidget(self.zoom_value_label)
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setRange(10, 50)
+        self.zoom_slider.setValue(10)
+        self.zoom_slider.valueChanged.connect(self.on_zoom_changed)
+        self.zoom_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        zoom_layout.addWidget(self.zoom_slider)
+        zoom_hint = QLabel("Or use mouse wheel on image")
+        zoom_hint.setStyleSheet("color: #666; font-size: 10px;")
+        zoom_layout.addWidget(zoom_hint)
+        controls_layout.addWidget(zoom_section)
+
         color_section = self._make_section("Color Scale")
         color_layout = color_section.layout()
         self.colorbar_fig = Figure(figsize=(1.8, 3.0))
@@ -365,6 +401,11 @@ class ImageViewer(QMainWindow):
 
         self.info_panel = InfoPanel(self.parameter_names)
         controls_layout.addWidget(self.info_panel)
+
+        self.roi_summary = ROISummaryPanel()
+        self.roi_summary.update_summary(self.fit_maps, self.current_param_index, self.mask_data)
+        controls_layout.addWidget(self.roi_summary)
+
         controls_layout.addStretch(1)
 
         widget = QWidget()
@@ -395,6 +436,19 @@ class ImageViewer(QMainWindow):
             "background-color:#1b1e29; border:1px solid #2a2f3f; padding:4px; border-radius:4px; color:#e0e0e0;"
         )
         return spin
+
+    def _find_best_initial_slice(self) -> int:
+        """Find the slice with the most non-zero pixels in the color map."""
+        if self.color_map is None:
+            return 0
+        pixel_counts = []
+        for s in range(self.color_map.shape[2]):
+            slice_data = self.color_map[:, :, s]
+            count = np.sum((slice_data > 0) & np.isfinite(slice_data))
+            pixel_counts.append(count)
+        if not pixel_counts or max(pixel_counts) == 0:
+            return 0
+        return int(np.argmax(pixel_counts))
 
     def _compute_color_range(self) -> tuple[float, float]:
         """Calculate reasonable color limits for the overlay."""
@@ -467,6 +521,8 @@ class ImageViewer(QMainWindow):
             self.parameter_summary.setText(
                 f"Highlighting: {self.parameter_names[index].upper()}"
             )
+        if hasattr(self, "roi_summary"):
+            self.roi_summary.update_summary(self.fit_maps, index, self.mask_data)
         self.update_colorbar()
         self.display_slice()
 
@@ -526,7 +582,35 @@ class ImageViewer(QMainWindow):
         """Reset to automatic color scaling."""
         self.vmin_override = None
         self.vmax_override = None
+        self.colorbar_range = self._compute_color_range()
+        self._sync_color_spins()
         self.update_colorbar()
+        self.display_slice()
+
+    def on_zoom_changed(self, value: int) -> None:
+        """Handle zoom slider changes."""
+        self.zoom_level = value / 10.0
+        self._apply_zoom()
+
+    def wheelEvent(self, event):
+        """Handle mouse wheel for zooming."""
+        if event.angleDelta().y() > 0:
+            self.zoom_level = min(5.0, self.zoom_level + 0.2)
+        else:
+            self.zoom_level = max(1.0, self.zoom_level - 0.2)
+        self.zoom_slider.blockSignals(True)
+        self.zoom_slider.setValue(int(self.zoom_level * 10))
+        self.zoom_slider.blockSignals(False)
+        self._apply_zoom()
+
+    def _apply_zoom(self) -> None:
+        """Apply current zoom level to the image."""
+        self.scaling_factor = int(self.base_scaling_factor * self.zoom_level)
+        if hasattr(self, "zoom_value_label"):
+            self.zoom_value_label.setText(f"{self.zoom_level:.1f}x")
+        width = self.dicom.shape[1] * self.scaling_factor
+        height = self.dicom.shape[2] * self.scaling_factor
+        self.image_label.setFixedSize(width, height)
         self.display_slice()
 
 
@@ -691,6 +775,76 @@ class InfoPanel(QWidget):
             "</tbody>"
             "</table>"
         )
+        self.table_label.setText(html)
+
+
+class ROISummaryPanel(QWidget):
+    """Panel showing ROI statistics: pixels, mean, std per unique label."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        title = QLabel("ROI SUMMARY")
+        title.setStyleSheet("font-weight: 600; color: #7cd5ff;")
+        layout.addWidget(title)
+
+        self.table_label = QLabel("<i>No mask loaded</i>")
+        self.table_label.setWordWrap(True)
+        self.table_label.setTextFormat(Qt.RichText)
+        self.table_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.table_label.setStyleSheet("font-family: 'JetBrains Mono', monospace; font-size: 11px;")
+        layout.addWidget(self.table_label)
+
+        self.setLayout(layout)
+
+    def update_summary(self, fit_maps: np.ndarray, param_index: int, mask_data: np.ndarray | None) -> None:
+        """Calculate and display ROI statistics per label."""
+        if fit_maps is None:
+            self.table_label.setText("<i>No data</i>")
+            return
+
+        param_data = fit_maps[param_index]
+
+        if mask_data is None:
+            # Fallback: show total stats if no mask
+            valid_mask = (param_data > 0) & np.isfinite(param_data)
+            if not np.any(valid_mask):
+                self.table_label.setText("<i>No valid pixels</i>")
+                return
+            valid_values = param_data[valid_mask]
+            html = (
+                "<table style='width:100%;'>"
+                "<tr style='color:#888;'><td>ROI</td><td>Pixels</td><td>Mean</td><td>Std</td></tr>"
+                "<tr><td>All</td><td>{}</td><td>{:.1f}</td><td>{:.1f}</td></tr>"
+                "</table>"
+            ).format(int(np.sum(valid_mask)), np.nanmean(valid_values), np.nanstd(valid_values))
+            self.table_label.setText(html)
+            return
+
+        # Get unique ROI labels (excluding 0)
+        unique_labels = np.unique(mask_data)
+        unique_labels = unique_labels[unique_labels > 0]
+
+        if len(unique_labels) == 0:
+            self.table_label.setText("<i>No ROIs in mask</i>")
+            return
+
+        rows = ["<tr style='color:#888;'><td>ROI</td><td>Px</td><td>Mean</td><td>Std</td></tr>"]
+        for label in sorted(unique_labels):
+            roi_mask = (mask_data == label) & (param_data > 0) & np.isfinite(param_data)
+            if not np.any(roi_mask):
+                rows.append(f"<tr><td>{int(label)}</td><td>0</td><td>-</td><td>-</td></tr>")
+                continue
+            values = param_data[roi_mask]
+            pixels = int(np.sum(roi_mask))
+            mean_val = float(np.nanmean(values))
+            std_val = float(np.nanstd(values))
+            rows.append(f"<tr><td><b>{int(label)}</b></td><td>{pixels}</td><td>{mean_val:.1f}</td><td>{std_val:.1f}</td></tr>")
+
+        html = "<table style='width:100%;'>" + "".join(rows) + "</table>"
         self.table_label.setText(html)
 
 

@@ -163,7 +163,7 @@ extend-exclude = '''
 python-version = "3.10"
 
 [tool.uv.sources]
-maskregistration = { git = "https://github.com/MPR-UKD/MaskRegistration.git" }
+maskregistration = { git = "https://github.com/MPR-UKD/MaskRegistration.git", tag = "v0.2.0" }
 
 [dependency-groups]
 dev = [
