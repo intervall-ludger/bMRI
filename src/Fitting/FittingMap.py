@@ -36,11 +36,9 @@ class FittedMap:
         dcm_folder = Path(dcm_folder)
         mask_file = Path(mask_file)
 
-        # Load the DICOM files and transpose the dimensions
-        fitted_map = (
-            get_dcm_array([_ for _ in dcm_folder.glob("*.dcm")])
-            .transpose((2, 1, 0))
-            .astype("float32")
+        # Load the DICOM files
+        fitted_map = get_dcm_array([_ for _ in dcm_folder.glob("*.dcm")]).astype(
+            "float32"
         )
 
         # Load the mask

@@ -165,6 +165,40 @@ def launch_t2star_viewer(
     app.exec()  # pragma: no cover
 
 
+@app.command("web")
+def view_web_command(
+    results: Annotated[
+        Path,
+        typer.Argument(
+            help="Directory containing fitting results (NIfTI maps, masks, etc.)",
+        ),
+    ],
+    port: Annotated[
+        int,
+        typer.Option("--port", "-p", help="Port for the web server"),
+    ] = 8050,
+    no_browser: Annotated[
+        bool,
+        typer.Option("--no-browser", help="Don't auto-open browser"),
+    ] = False,
+) -> None:
+    """Launch the web-based viewer for fitting results."""
+    console.print(
+        Panel.fit(
+            "[bold cyan]bMRI Web Viewer[/bold cyan]\n"
+            f"[dim]http://localhost:{port}[/dim]",
+            border_style="cyan",
+        )
+    )
+    try:
+        results_dir = _resolve_results_dir(results)
+        from bmri.viewer import launch_viewer
+        launch_viewer(results_dir, port=port, open_browser=not no_browser)
+    except (FileNotFoundError, ValueError) as exc:
+        console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
 @app.command("t2star")
 def view_t2star_command(
     results: Annotated[

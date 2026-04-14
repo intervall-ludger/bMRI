@@ -149,26 +149,9 @@ class T1rho_T2prep(AbstractFitting):
         x: np.ndarray,
         pools: int = cpu_count(),
         min_r2: float = -np.inf,
+        method: str = "curvefit",
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Fit the T1rho or T2 relaxation time for the given DICOM image data.
-
-        Parameters:
-        - dicom: 3D or 4D array of DICOM image data
-        - mask: 2D or 3D array of mask indicating which pixels to include in the fit
-        - x: Array of independent variable data
-        - pools: Number of parallel pools for computation
-        - min_r2: minimum R^2 value for a fit to be considered valid
-
-        Returns:
-        - fit_maps: 3D or 4D array of fitted T1rho or T2 values
-        - r2_map: 2D or 3D array of R^2 values for each fit
-        """
-
-        # Call the fit method from the parent class using the provided dicom, mask, and x data
-        # Note: Removed mask z-axis inversion to align with DICOM data orientation
-        fit_maps, r2_map = super().fit(dicom, mask, x, pools=pools, min_r2=min_r2)
-
+        fit_maps, r2_map = super().fit(dicom, mask, x, pools=pools, min_r2=min_r2, method=method)
         return fit_maps, r2_map
 
     def get_TSL(self, first_SL: int = 10, inc_SL: int = 30, n: int = 4) -> np.ndarray:

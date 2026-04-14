@@ -49,6 +49,7 @@ class AbstractFitting(ABC):
         x: np.ndarray,
         pools: int = cpu_count(),
         min_r2: float = -np.inf,
+        method: str = "curvefit",
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Fit the given data using parallel processing.
@@ -59,6 +60,7 @@ class AbstractFitting(ABC):
         - x (np.ndarray): Independent variable data
         - pools (int, optional): Number of parallel processes to use (default is the number of CPUs)
         - min_r2 (float, optional): Minimum R squared value to consider (default is negative infinity)
+        - method (str): "curvefit" (default, 3-param with offset) or "loglinear" (fast 2-param, no offset)
 
         Returns:
         - Tuple[np.ndarray, np.ndarray]: Arrays of fit parameters and R squared values
@@ -66,7 +68,6 @@ class AbstractFitting(ABC):
         dicom = dicom.astype("float64")
         assert len(mask.shape) == len(dicom.shape) - 1
         if len(mask.shape) == 2:
-            # Change size of dicom and mask to 3D
             mask = np.expand_dims(mask, axis=2)
             dicom = np.expand_dims(dicom, axis=3)
         assert dicom.shape[0] == len(x)
@@ -77,47 +78,129 @@ class AbstractFitting(ABC):
                 "Ensure the mask was created from the same image data."
             )
 
-        # Get the number of parameters in the fit function
-        num_params = len(curve_fit(self.fit_function, x, dicom[:, 0, 0, 0])[0])
+        if method == "loglinear":
+            return self._fit_loglinear(dicom, mask, x, min_r2)
+        return self._fit_curvefit(dicom, mask, x, pools, min_r2)
 
-        # Initialize fit_maps list
+    def _fit_loglinear(
+        self,
+        dicom: np.ndarray,
+        mask: np.ndarray,
+        x: np.ndarray,
+        min_r2: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Vectorized log-linear fitting: y = S0 * exp(-x/T). No offset parameter."""
+        # 3 output params: S0, T, offset (offset=0 for compatibility)
+        num_params = 3
         fit_maps = np.full((num_params, *mask.shape), np.nan)
         r2_map = np.zeros(mask.shape)
 
-        # Create a partial function with the fixed arguments for fit_pixel
-        fit_pixel_fixed = partial(
-            fit_pixel,
+        coords = np.nonzero(mask)
+        pixel_data = dicom[:, coords[0], coords[1], coords[2]]  # (n_echoes, n_pixels)
+
+        if self.normalize:
+            maxvals = pixel_data.max(axis=0)
+            maxvals[maxvals == 0] = 1
+            pixel_data = pixel_data / maxvals
+
+        # Clamp for log
+        pixel_data = np.clip(pixel_data, 1e-10, None)
+        log_data = np.log(pixel_data)  # (n_echoes, n_pixels)
+
+        # Solve log(y) = log(S0) - x/T for all pixels at once
+        # Design matrix: [1, -x] → params: [log(S0), 1/T]
+        A = np.column_stack([np.ones(len(x)), -x])  # (n_echoes, 2)
+        params, residuals, _, _ = np.linalg.lstsq(A, log_data, rcond=None)
+        # params shape: (2, n_pixels) → [log(S0), 1/T]
+
+        s0_vals = np.exp(params[0])
+        inv_t = params[1]
+        # Avoid division by zero / negative
+        valid = inv_t > 1e-10
+        t_vals = np.full(inv_t.shape, np.nan)
+        t_vals[valid] = 1.0 / inv_t[valid]
+
+        # Apply bounds if set
+        if self.bounds is not None:
+            t_lower, t_upper = self.bounds[0][1], self.bounds[1][1]
+            out_of_bounds = (t_vals < t_lower) | (t_vals > t_upper)
+            t_vals[out_of_bounds] = np.nan
+
+        # Calculate R² for all pixels vectorized
+        fitted = s0_vals[np.newaxis, :] * np.exp(-x[:, np.newaxis] * inv_t[np.newaxis, :])
+        if self.normalize:
+            ss_res = np.sum((pixel_data - fitted) ** 2, axis=0)
+            ss_tot = np.sum((pixel_data - pixel_data.mean(axis=0)) ** 2, axis=0)
+        else:
+            ss_res = np.sum((pixel_data - fitted) ** 2, axis=0)
+            ss_tot = np.sum((pixel_data - pixel_data.mean(axis=0)) ** 2, axis=0)
+        r2_vals = np.where(ss_tot > 0, 1 - ss_res / ss_tot, 0.0)
+
+        # Store results
+        good = np.isfinite(t_vals) & (r2_vals > min_r2)
+        idx = (coords[0][good], coords[1][good], coords[2][good])
+        fit_maps[0][idx] = s0_vals[good] if not self.normalize else s0_vals[good] * maxvals[good]
+        fit_maps[1][idx] = t_vals[good]
+        fit_maps[2][idx] = 0.0  # offset = 0
+
+        r2_idx = (coords[0], coords[1], coords[2])
+        r2_map[r2_idx] = r2_vals
+
+        return np.array(fit_maps), r2_map
+
+    def _fit_curvefit(
+        self,
+        dicom: np.ndarray,
+        mask: np.ndarray,
+        x: np.ndarray,
+        pools: int,
+        min_r2: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Per-pixel curve_fit with log-linear initial guess and chunked multiprocessing."""
+        num_params = len(curve_fit(self.fit_function, x, dicom[:, 0, 0, 0])[0])
+        fit_maps = np.full((num_params, *mask.shape), np.nan)
+        r2_map = np.zeros(mask.shape)
+
+        calc_p0 = len(get_function_parameter(self.fit_function)) == 3
+
+        coords = list(zip(*np.nonzero(mask)))
+        pixel_data = [dicom[:, i, j, k].copy() for i, j, k in coords]
+
+        # Vectorized log-linear pre-fit for initial guesses
+        p0_list = _loglinear_initial_guess(pixel_data, x, self.normalize, self.bounds)
+
+        chunk_size = max(100, len(pixel_data) // (pools if pools > 0 else cpu_count()))
+        chunks = []
+        p0_chunks = []
+        for start in range(0, len(pixel_data), chunk_size):
+            chunks.append(pixel_data[start : start + chunk_size])
+            p0_chunks.append(p0_list[start : start + chunk_size])
+
+        fit_chunk_fixed = partial(
+            _fit_chunk,
+            x=x,
             fit_function=self.fit_function,
             bounds=self.bounds,
             config=self.fit_config,
             normalize=self.normalize,
-            calc_p0=True
-            if len(get_function_parameter(self.fit_function)) == 3
-            else False,
+            calc_p0=calc_p0,
         )
 
-        # Create an iterator of arguments to pass to fit_pixel
-        pixel_args = zip(
-            (dicom[:, i, j, k] for i, j, k in zip(*np.nonzero(mask))),
-            repeat(x),
-        )
-
-        # Use a Pool to fit the pixels in parallel
         if pools != 0:
             with Pool(pools) as pool:
-                # Call fit_pixel for each pixel and store the result in a list
-                pixel_results = pool.starmap(fit_pixel_fixed, pixel_args)
+                chunk_results = pool.starmap(
+                    fit_chunk_fixed,
+                    [(chunk, p0) for chunk, p0 in zip(chunks, p0_chunks)],
+                )
         else:
-            pixel_results = [fit_pixel_fixed(*p) for p in pixel_args]
+            chunk_results = [fit_chunk_fixed(c, p0) for c, p0 in zip(chunks, p0_chunks)]
 
-        # Store fitting parameters and r2 values in appropriate arrays
-        for i, j, k, param in zip(*np.nonzero(mask), pixel_results):
+        all_results = [r for chunk in chunk_results for r in chunk]
+        for (i, j, k), (param, r2) in zip(coords, all_results):
             if param is None:
                 continue
-            r2_map[i, j, k] = calculate_r2(
-                dicom[:, i, j, k], self.fit_function, param, x, self.normalize
-            )
-            if r2_map[i, j, k] > min_r2:
+            r2_map[i, j, k] = r2
+            if r2 > min_r2:
                 for p_num, p in enumerate(param):
                     fit_maps[p_num][i, j, k] = p
 
@@ -146,6 +229,65 @@ class AbstractFitting(ABC):
         return np.loadtxt(file_path)
 
 
+def _loglinear_initial_guess(
+    pixel_data_list: list,
+    x: np.ndarray,
+    normalize: bool,
+    bounds: Optional[Tuple] = None,
+) -> list:
+    """Compute log-linear initial guesses for all pixels vectorized."""
+    arr = np.array(pixel_data_list, dtype=np.float64)  # (n_pixels, n_echoes)
+    if normalize:
+        maxvals = arr.max(axis=1, keepdims=True)
+        maxvals[maxvals == 0] = 1
+        arr = arr / maxvals
+
+    arr_clipped = np.clip(arr, 1e-10, None)
+    log_data = np.log(arr_clipped)  # (n_pixels, n_echoes)
+
+    A = np.column_stack([np.ones(len(x)), -x])  # (n_echoes, 2)
+    params, _, _, _ = np.linalg.lstsq(A, log_data.T, rcond=None)
+    # params: (2, n_pixels) → [log(S0), 1/T]
+
+    s0_init = np.exp(params[0])
+    inv_t = params[1]
+    t_init = np.where(inv_t > 1e-10, 1.0 / inv_t, 30.0)
+    offset_init = arr[:, -1] * 0.1
+
+    # Clamp to bounds
+    if bounds is not None:
+        s0_init = np.clip(s0_init, bounds[0][0], bounds[1][0])
+        t_init = np.clip(t_init, bounds[0][1], bounds[1][1])
+        offset_init = np.clip(offset_init, bounds[0][2], bounds[1][2])
+
+    return [[float(s0_init[i]), float(t_init[i]), float(offset_init[i])] for i in range(len(pixel_data_list))]
+
+
+def _fit_chunk(
+    pixel_data_list: list,
+    p0_list: list = None,
+    x: np.ndarray = None,
+    fit_function: Callable = None,
+    bounds: Optional[Tuple[float, float]] = None,
+    config: Optional[dict] = None,
+    normalize: bool = False,
+    calc_p0: bool = True,
+) -> list:
+    """Fit a chunk of pixels and return (params, r2) tuples."""
+    results = []
+    for idx, y in enumerate(pixel_data_list):
+        p0 = p0_list[idx] if p0_list is not None else None
+        param = fit_pixel(y, x, fit_function, bounds, config, normalize, calc_p0, p0_override=p0)
+        if param is None:
+            results.append((None, 0.0))
+        else:
+            y_eval = y / (np.max(y) if normalize and np.max(y) > 0 else 1)
+            residuals = y_eval - fit_function(x, *param)
+            r2 = float(get_r2(residuals, y_eval))
+            results.append((param, r2))
+    return results
+
+
 def fit_pixel(
     y: np.ndarray,
     x: np.ndarray,
@@ -154,38 +296,24 @@ def fit_pixel(
     config: Optional[dict] = None,
     normalize: bool = False,
     calc_p0: bool = True,
+    p0_override: Optional[list] = None,
 ) -> Union[np.ndarray, None]:
-    """
-    Fits a curve to the given data using the provided fit function.
-
-    Parameters:
-    - y (np.ndarray): 1D array of dependent variable data
-    - x (np.ndarray): 1D array of independent variable data
-    - fit_function (Callable): function to use for fitting the curve
-    - bounds (Tuple[float, float], optional): optional bounds for the curve fit parameters
-    - config (dict, optional): optional config dictionary for curve_fit function
-    - normalize (bool, optional): normalize the data before fitting (default is False)
-    - calc_p0 (bool, optional): Calc initial parameter as start values
-
-    Returns:
-    - np.ndarray, None: array of curve fit parameters or None if fitting fails
-    """
-
-    # Normalize data if requested
     if normalize:
+        y = y.copy()
         y /= np.max(y) if np.max(y) > 0 else 1
 
-    # Set initial parameter values based on data
-    if calc_p0:
+    if p0_override is not None:
+        p0 = p0_override
+        kwargs = {"xtol": 1e-6, "p0": p0}
+    elif calc_p0:
         S0_init = np.max(y)
         offset_init = np.min(y)
         slope, _ = np.polyfit(x, np.log(y - offset_init + 0.0001), 1)
         t2_t2star_init = -1.0 / slope
 
         if t2_t2star_init > 5:
-            t2_t2star_init = 5  # np.exp(10) == 22026 ms
+            t2_t2star_init = 5
 
-        # Check bounds and set initial parameter values accordingly
         if bounds is None:
             p0 = [S0_init, np.exp(t2_t2star_init), offset_init]
         else:
@@ -204,14 +332,12 @@ def fit_pixel(
     else:
         kwargs = {"xtol": 1e-6}
 
-    # Set bounds and configuration if provided
     if bounds is not None:
         kwargs["bounds"] = bounds
     if config is not None:
         kwargs.update(config)
 
     try:
-        # Perform curve fitting
         param, _ = curve_fit(fit_function, x, y, **kwargs)
     except (RuntimeError, ValueError):
         param = None
