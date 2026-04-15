@@ -7,10 +7,14 @@
 </head>
 <body>
 
-<!-- Top bar -->
 <header>
     <div class="header-left">
         <span class="logo">bMRI</span>
+        <div class="patient-nav" id="patient-nav" style="display:none">
+            <button id="prev-patient" class="nav-btn">‹</button>
+            <select id="patient-select" class="small-select"></select>
+            <button id="next-patient" class="nav-btn">›</button>
+        </div>
         <div id="param-tabs" class="param-tabs"></div>
     </div>
     <div class="header-right">
@@ -18,7 +22,6 @@
     </div>
 </header>
 
-<!-- Main content -->
 <div class="container">
     <div class="main-image" id="main-container">
         <div id="img-wrapper" style="position:relative; display:inline-block;">
@@ -51,7 +54,6 @@
     </div>
 </div>
 
-<!-- Bottom bar -->
 <div class="bottom-bar">
     <div class="control-group">
         <label>Slice</label>
@@ -65,6 +67,25 @@
         <input type="number" id="vmax" placeholder="max" step="any" class="small-input">
     </div>
     <div class="control-group">
+        <label>Cmap</label>
+        <select id="cmap-select" class="small-select">
+            <option value="hot">hot</option>
+            <option value="viridis">viridis</option>
+            <option value="plasma">plasma</option>
+            <option value="inferno">inferno</option>
+            <option value="magma">magma</option>
+            <option value="RdBu_r">RdBu_r</option>
+            <option value="coolwarm">coolwarm</option>
+            <option value="jet">jet</option>
+            <option value="turbo">turbo</option>
+        </select>
+    </div>
+    <div class="control-group">
+        <label>Alpha</label>
+        <span id="alpha-label" class="control-value">1.0</span>
+        <input type="range" id="alpha-slider" min="10" max="100" value="100" step="5">
+    </div>
+    <div class="control-group">
         <label>Zoom</label>
         <span id="zoom-label" class="control-value">1.0x</span>
         <input type="range" id="zoom-slider" min="50" max="500" value="100" step="10">
@@ -72,11 +93,18 @@
     <div class="control-group">
         <label class="toggle-label"><input type="checkbox" id="mask-toggle" checked> Mask</label>
     </div>
+    <div class="control-group" id="fit-btn-group" style="display:none">
+        <button id="fit-btn" class="action-btn">Refit</button>
+        <div class="fit-progress-wrap" id="fit-progress-wrap" style="display:none">
+            <div class="fit-progress-bar"><div class="fit-progress-fill" id="fit-progress-fill"></div></div>
+            <span id="fit-status" class="fit-status-text"></span>
+        </div>
+    </div>
     <div class="shortcuts">
-        <kbd>←→</kbd> slice <kbd>+−</kbd> zoom <kbd>0</kbd> reset <kbd>Tab</kbd> param <kbd>Esc</kbd> close
+        <kbd>←→</kbd> slice <kbd>+−</kbd> zoom <kbd>0</kbd> reset <kbd>Tab</kbd> param
     </div>
 </div>
 
-<script src="/static/viewer.js?v=5"></script>
+<script src="/static/viewer.js?v=7"></script>
 </body>
 </html>

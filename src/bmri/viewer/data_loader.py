@@ -222,7 +222,7 @@ def render_overlay_png(
         colormap = plt.get_cmap(cmap)
         pmap_normed = np.clip((pmap_rot - vmin) / (vmax - vmin + 1e-10), 0, 1)
         pmap_colored = colormap(pmap_normed)[:, :, :3]  # (H, W, 3)
-        canvas[valid] = pmap_colored[valid]
+        canvas[valid] = alpha * pmap_colored[valid] + (1 - alpha) * canvas[valid]
 
     # Mask contours as colored outlines
     if show_mask and data.mask is not None and s < data.mask.shape[-1]:

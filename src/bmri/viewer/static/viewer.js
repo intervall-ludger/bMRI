@@ -5,6 +5,11 @@ let currentParam = "";
 let zoomLevel = 1.0;
 let maskData = null;
 let maskShape = [0, 0];
+let maskCache = {};
+let patients = [];
+let patientIdx = 0;
+let currentCmap = "hot";
+let currentAlpha = 1.0;
 
 const img = document.getElementById("main-img");
 const sliceSlider = document.getElementById("slice-slider");
@@ -21,12 +26,32 @@ const zoomLabel = document.getElementById("zoom-label");
 const container = document.getElementById("main-container");
 const markerCanvas = document.getElementById("marker-canvas");
 const paramTabs = document.getElementById("param-tabs");
+const cmapSelect = document.getElementById("cmap-select");
+const alphaSlider = document.getElementById("alpha-slider");
+const alphaLabel = document.getElementById("alpha-label");
+const patientNav = document.getElementById("patient-nav");
+const patientSelect = document.getElementById("patient-select");
+const prevPatientBtn = document.getElementById("prev-patient");
+const nextPatientBtn = document.getElementById("next-patient");
+const fitBtnGroup = document.getElementById("fit-btn-group");
+const fitBtn = document.getElementById("fit-btn");
+const fitProgressWrap = document.getElementById("fit-progress-wrap");
+const fitProgressFill = document.getElementById("fit-progress-fill");
+const fitStatus = document.getElementById("fit-status");
 
 // --- Init ---
 
 async function init() {
+    setupEventListeners();
+    await initPatients();
+    await loadData();
+}
+
+async function loadData() {
     info = await (await fetch("/api/info")).json();
     stats = await (await fetch("/api/stats")).json();
+    maskCache = {};
+    maskData = null;
 
     document.getElementById("header-info").textContent =
         `${info.shape[0]}×${info.shape[1]}×${info.shape[2]}  •  ${info.modality.toUpperCase()}`;
@@ -35,7 +60,6 @@ async function init() {
     currentSlice = Math.floor(info.num_slices / 2);
     sliceSlider.value = currentSlice;
 
-    // Build parameter tabs
     paramTabs.innerHTML = "";
     for (const p of info.parameters) {
         const btn = document.createElement("button");
@@ -48,23 +72,78 @@ async function init() {
     if (info.parameters.length > 0) {
         const mainParam = info.parameters.find(p => p.includes("t2") || p.includes("t1rho")) || info.parameters[0];
         selectParam(mainParam);
+    } else {
+        updateSlice();
     }
 
+    fitBtnGroup.style.display = info.has_fit_cmd ? "" : "none";
     renderMeta();
-    updateSlice();
+    updateStats();
+}
 
-    // Load center pixel fit chart
-    const centerX = Math.floor(info.shape[0] / 2);
-    const centerY = Math.floor(info.shape[1] / 2);
-    try {
-        const resp = await fetch(`/api/pixel/${centerX}/${centerY}/${currentSlice}`);
-        if (resp.ok) {
-            const px = await resp.json();
-            drawFitChart(px);
-        }
-    } catch (e) {
-        fitInfo.textContent = "Error loading fit data";
+// --- Patient navigation ---
+
+async function initPatients() {
+    const resp = await fetch("/api/patients");
+    const d = await resp.json();
+    patients = d.patients;
+    patientIdx = d.current;
+
+    if (patients.length <= 1) {
+        patientNav.style.display = "none";
+        return;
     }
+
+    patientNav.style.display = "";
+    patientSelect.innerHTML = "";
+    for (let i = 0; i < patients.length; i++) {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = patients[i].id;
+        if (i === patientIdx) opt.selected = true;
+        patientSelect.appendChild(opt);
+    }
+}
+
+async function switchPatient(idx) {
+    if (idx < 0 || idx >= patients.length) return;
+    const resp = await fetch(`/api/patient/${idx}`, { method: "POST" });
+    if (!resp.ok) return;
+    patientIdx = idx;
+    patientSelect.value = idx;
+    await loadData();
+}
+
+// --- Rendering ---
+
+function buildOverlayUrl() {
+    const params = new URLSearchParams({
+        param: currentParam,
+        alpha: currentAlpha,
+        mask: maskToggle.checked,
+        cmap: currentCmap,
+    });
+    if (vminInput.value !== "") params.set("vmin", vminInput.value);
+    if (vmaxInput.value !== "") params.set("vmax", vmaxInput.value);
+    return `/api/overlay/${currentSlice}?${params}`;
+}
+
+async function updateSlice() {
+    sliceLabel.textContent = `${parseInt(currentSlice) + 1}/${info.num_slices}`;
+    img.src = buildOverlayUrl();
+    if (info.has_mask) {
+        const d = await getMaskData(currentSlice);
+        maskData = d.data;
+        maskShape = d.shape;
+    }
+}
+
+async function getMaskData(sliceIdx) {
+    if (maskCache[sliceIdx]) return maskCache[sliceIdx];
+    const resp = await fetch(`/api/mask_data/${sliceIdx}`);
+    const d = await resp.json();
+    maskCache[sliceIdx] = d;
+    return d;
 }
 
 function selectParam(name) {
@@ -79,30 +158,6 @@ function cycleParam(dir) {
     const idx = info.parameters.indexOf(currentParam);
     const next = (idx + dir + info.parameters.length) % info.parameters.length;
     selectParam(info.parameters[next]);
-}
-
-// --- Rendering ---
-
-function buildOverlayUrl() {
-    const params = new URLSearchParams({
-        param: currentParam,
-        alpha: 1.0,
-        mask: maskToggle.checked,
-    });
-    if (vminInput.value !== "") params.set("vmin", vminInput.value);
-    if (vmaxInput.value !== "") params.set("vmax", vmaxInput.value);
-    return `/api/overlay/${currentSlice}?${params}`;
-}
-
-async function updateSlice() {
-    sliceLabel.textContent = `${parseInt(currentSlice) + 1}/${info.num_slices}`;
-    img.src = buildOverlayUrl();
-    if (info.has_mask) {
-        const resp = await fetch(`/api/mask_data/${currentSlice}`);
-        const d = await resp.json();
-        maskData = d.data;
-        maskShape = d.shape;
-    }
 }
 
 function updateStats() {
@@ -120,7 +175,7 @@ function updateStats() {
             <td>${s.mean !== null ? s.mean.toFixed(1) : "–"}</td>
             <td>${s.std !== null ? s.std.toFixed(1) : "–"}</td>
             <td>${s.pixels}</td>
-            <td>${r2 ? `<span class="r2-badge ${r2Class}">${r2.toFixed(2)}</span>` : "–"}</td>
+            <td>${r2 != null ? `<span class="r2-badge ${r2Class}">${r2.toFixed(2)}</span>` : "–"}</td>
         `;
         statsBody.appendChild(tr);
     }
@@ -151,60 +206,13 @@ function applyZoom() {
     zoomSlider.value = Math.round(zoomLevel * 100);
 }
 
-zoomSlider.addEventListener("input", () => { zoomLevel = zoomSlider.value / 100; applyZoom(); });
-
-container.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    const oldZoom = zoomLevel;
-    zoomLevel = Math.max(0.5, Math.min(5, zoomLevel + (e.deltaY < 0 ? 0.15 : -0.15)));
-    if (zoomLevel !== oldZoom) {
-        const rect = container.getBoundingClientRect();
-        const mx = e.clientX - rect.left + container.scrollLeft;
-        const my = e.clientY - rect.top + container.scrollTop;
-        const ratio = zoomLevel / oldZoom;
-        applyZoom();
-        container.scrollLeft = mx * ratio - (e.clientX - rect.left);
-        container.scrollTop = my * ratio - (e.clientY - rect.top);
-    }
-}, { passive: false });
-
 let isPanning = false;
 let didPan = false;
 let panStartX, panStartY, scrollStartX, scrollStartY;
 
-container.addEventListener("mousedown", (e) => {
-    if (e.button === 1 || (e.button === 0 && zoomLevel > 1)) {
-        isPanning = true;
-        didPan = false;
-        panStartX = e.clientX;
-        panStartY = e.clientY;
-        scrollStartX = container.scrollLeft;
-        scrollStartY = container.scrollTop;
-        container.style.cursor = "grabbing";
-        e.preventDefault();
-    }
-});
-
-document.addEventListener("mousemove", (e) => {
-    if (!isPanning) return;
-    const dx = e.clientX - panStartX;
-    const dy = e.clientY - panStartY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didPan = true;
-    container.scrollLeft = scrollStartX - dx;
-    container.scrollTop = scrollStartY - dy;
-});
-
-document.addEventListener("mouseup", () => {
-    if (isPanning) {
-        isPanning = false;
-        container.style.cursor = zoomLevel > 1 ? "grab" : "crosshair";
-    }
-});
-
 // --- Hover cursor ---
 
 function isInMask(imgX, imgY) {
-    // maskData is rotated [row][col], imgY=row, imgX=col
     if (!maskData || imgY < 0 || imgY >= maskShape[0] || imgX < 0 || imgX >= maskShape[1]) return false;
     return maskData[imgY][imgX] > 0;
 }
@@ -214,11 +222,7 @@ img.addEventListener("mousemove", (e) => {
     const rect = img.getBoundingClientRect();
     const ax = Math.round((e.clientX - rect.left) / rect.width * info.shape[0]);
     const ay = Math.round((e.clientY - rect.top) / rect.height * info.shape[1]);
-    if (zoomLevel > 1) {
-        container.style.cursor = "grab";
-    } else {
-        container.style.cursor = isInMask(ax, ay) ? "pointer" : "crosshair";
-    }
+    container.style.cursor = zoomLevel > 1 ? "grab" : (isInMask(ax, ay) ? "pointer" : "crosshair");
 });
 
 // --- Pixel click ---
@@ -229,7 +233,6 @@ img.addEventListener("click", async (e) => {
     const rect = img.getBoundingClientRect();
     const relX = (e.clientX - rect.left) / rect.width;
     const relY = (e.clientY - rect.top) / rect.height;
-    // PNG is exactly shape[0] x shape[1] pixels, so direct mapping works
     const imgX = Math.round(relX * info.shape[0]);
     const imgY = Math.round(relY * info.shape[1]);
 
@@ -260,7 +263,6 @@ function drawPixelMarker(relX, relY, inRoi) {
 // --- Fit chart ---
 
 function drawFitChart(px) {
-    // Fixed canvas size to avoid clientWidth=0 issues
     const cw = 256, ch = 180;
     fitChart.width = cw * 2;
     fitChart.height = ch * 2;
@@ -276,7 +278,6 @@ function drawFitChart(px) {
     ctx.fillStyle = "#0b0c10";
     ctx.fillRect(0, 0, cw, ch);
 
-    // Info line
     let infoText = `(${px.x}, ${px.y}, ${px.z})`;
     if (px.roi > 0) infoText += `  ROI ${px.roi}`;
     if (px.r2 != null) infoText += `  R²=${px.r2.toFixed(3)}`;
@@ -284,8 +285,7 @@ function drawFitChart(px) {
     fitInfo.textContent = infoText;
     fitInfo.style.color = px.rejected ? "#f44336" : "#aaa";
 
-    // Param values
-    const paramText = Object.entries(px.params)
+    const paramText = Object.entries(px.params || {})
         .filter(([, v]) => v != null && v > 0)
         .map(([k, v]) => `${k}=${v.toFixed(1)}`)
         .join("  ");
@@ -308,10 +308,9 @@ function drawFitChart(px) {
     const yMin = Math.min(0, Math.min(...allY)), yMax = Math.max(...allY) * 1.1;
     if (yMax <= yMin) return;
 
-    const toX = (t) => pad.l + (t - xMin) / (xMax - xMin) * pw;
-    const toY = (v) => pad.t + ph - (v - yMin) / (yMax - yMin) * ph;
+    const toX = t => pad.l + (t - xMin) / (xMax - xMin) * pw;
+    const toY = v => pad.t + ph - (v - yMin) / (yMax - yMin) * ph;
 
-    // Grid
     ctx.strokeStyle = "#1a1c23";
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= 4; i++) {
@@ -319,14 +318,12 @@ function drawFitChart(px) {
         ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
     }
 
-    // Axes
     ctx.strokeStyle = "#333";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph);
     ctx.stroke();
 
-    // Axis labels
     ctx.fillStyle = "#555";
     ctx.font = "8px monospace";
     ctx.textAlign = "center";
@@ -340,7 +337,6 @@ function drawFitChart(px) {
     ctx.fillStyle = "#444";
     ctx.fillText("time (ms)", pad.l + pw / 2, ch - 2);
 
-    // Fit curve
     if (px.fit_times && px.fit_signal && px.fit_signal.length > 1) {
         ctx.strokeStyle = px.rejected ? "#ff9800" : "#ff6b6b";
         ctx.lineWidth = 2;
@@ -354,7 +350,6 @@ function drawFitChart(px) {
         ctx.setLineDash([]);
     }
 
-    // Data points
     for (let i = 0; i < times.length; i++) {
         const x = toX(times[i]), y = toY(signal[i]);
         ctx.beginPath();
@@ -367,40 +362,136 @@ function drawFitChart(px) {
     }
 }
 
-// --- Events ---
+// --- Fit from viewer ---
 
-sliceSlider.addEventListener("input", () => { currentSlice = sliceSlider.value; updateSlice(); });
-vminInput.addEventListener("change", updateSlice);
-vmaxInput.addEventListener("change", updateSlice);
-maskToggle.addEventListener("change", updateSlice);
-img.addEventListener("load", () => applyZoom());
+fitBtn.addEventListener("click", async () => {
+    fitBtn.disabled = true;
+    fitProgressWrap.style.display = "";
+    fitProgressFill.style.width = "0%";
+    fitStatus.textContent = "Starting...";
 
-// Keyboard
-document.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "INPUT") return;
-    if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
-        currentSlice = Math.max(0, parseInt(currentSlice) - 1);
-        sliceSlider.value = currentSlice;
-        updateSlice();
-    } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
-        currentSlice = Math.min(info.num_slices - 1, parseInt(currentSlice) + 1);
-        sliceSlider.value = currentSlice;
-        updateSlice();
-    } else if (e.key === "+" || e.key === "=") {
-        zoomLevel = Math.min(5, zoomLevel + 0.25);
-        applyZoom();
-    } else if (e.key === "-") {
-        zoomLevel = Math.max(0.5, zoomLevel - 0.25);
-        applyZoom();
-    } else if (e.key === "0") {
-        zoomLevel = 1.0;
-        applyZoom();
-        container.scrollLeft = 0;
-        container.scrollTop = 0;
-    } else if (e.key === "Tab") {
-        e.preventDefault();
-        cycleParam(e.shiftKey ? -1 : 1);
-    }
+    await fetch("/api/fit", { method: "POST" });
+
+    const evtSource = new EventSource("/api/fit/progress");
+    evtSource.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+        fitProgressFill.style.width = d.progress + "%";
+        fitStatus.textContent = d.message || "";
+        if (d.done) {
+            evtSource.close();
+            fitBtn.disabled = false;
+            if (d.error) {
+                fitStatus.textContent = "Error: " + d.error;
+                fitStatus.style.color = "#f44336";
+            } else {
+                fitStatus.textContent = "Done";
+                fitStatus.style.color = "#4caf50";
+                setTimeout(() => loadData(), 500);
+            }
+        }
+    };
+    evtSource.onerror = () => {
+        evtSource.close();
+        fitBtn.disabled = false;
+        fitStatus.textContent = "Connection error";
+        fitStatus.style.color = "#f44336";
+    };
 });
+
+// --- Event listeners setup ---
+
+function setupEventListeners() {
+    zoomSlider.addEventListener("input", () => { zoomLevel = zoomSlider.value / 100; applyZoom(); });
+
+    container.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const oldZoom = zoomLevel;
+        zoomLevel = Math.max(0.5, Math.min(5, zoomLevel + (e.deltaY < 0 ? 0.15 : -0.15)));
+        if (zoomLevel !== oldZoom) {
+            const rect = container.getBoundingClientRect();
+            const mx = e.clientX - rect.left + container.scrollLeft;
+            const my = e.clientY - rect.top + container.scrollTop;
+            const ratio = zoomLevel / oldZoom;
+            applyZoom();
+            container.scrollLeft = mx * ratio - (e.clientX - rect.left);
+            container.scrollTop = my * ratio - (e.clientY - rect.top);
+        }
+    }, { passive: false });
+
+    container.addEventListener("mousedown", (e) => {
+        if (e.button === 1 || (e.button === 0 && zoomLevel > 1)) {
+            isPanning = true;
+            didPan = false;
+            panStartX = e.clientX;
+            panStartY = e.clientY;
+            scrollStartX = container.scrollLeft;
+            scrollStartY = container.scrollTop;
+            container.style.cursor = "grabbing";
+            e.preventDefault();
+        }
+    });
+
+    document.addEventListener("mousemove", (e) => {
+        if (!isPanning) return;
+        const dx = e.clientX - panStartX;
+        const dy = e.clientY - panStartY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didPan = true;
+        container.scrollLeft = scrollStartX - dx;
+        container.scrollTop = scrollStartY - dy;
+    });
+
+    document.addEventListener("mouseup", () => {
+        if (isPanning) {
+            isPanning = false;
+            container.style.cursor = zoomLevel > 1 ? "grab" : "crosshair";
+        }
+    });
+
+    sliceSlider.addEventListener("input", () => { currentSlice = sliceSlider.value; updateSlice(); });
+    vminInput.addEventListener("change", updateSlice);
+    vmaxInput.addEventListener("change", updateSlice);
+    maskToggle.addEventListener("change", updateSlice);
+    img.addEventListener("load", () => applyZoom());
+
+    cmapSelect.addEventListener("change", () => { currentCmap = cmapSelect.value; updateSlice(); });
+
+    alphaSlider.addEventListener("input", () => {
+        currentAlpha = alphaSlider.value / 100;
+        alphaLabel.textContent = currentAlpha.toFixed(1);
+        updateSlice();
+    });
+
+    patientSelect.addEventListener("change", () => switchPatient(parseInt(patientSelect.value)));
+    prevPatientBtn.addEventListener("click", () => switchPatient(patientIdx - 1));
+    nextPatientBtn.addEventListener("click", () => switchPatient(patientIdx + 1));
+
+    document.addEventListener("keydown", (e) => {
+        if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+        // Alt+Arrow: patient navigation (must come before plain Arrow check)
+        if (e.altKey && e.key === "ArrowLeft") {
+            switchPatient(patientIdx - 1);
+        } else if (e.altKey && e.key === "ArrowRight") {
+            switchPatient(patientIdx + 1);
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+            currentSlice = Math.max(0, parseInt(currentSlice) - 1);
+            sliceSlider.value = currentSlice;
+            updateSlice();
+        } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+            currentSlice = Math.min(info.num_slices - 1, parseInt(currentSlice) + 1);
+            sliceSlider.value = currentSlice;
+            updateSlice();
+        } else if (e.key === "+" || e.key === "=") {
+            zoomLevel = Math.min(5, zoomLevel + 0.25); applyZoom();
+        } else if (e.key === "-") {
+            zoomLevel = Math.max(0.5, zoomLevel - 0.25); applyZoom();
+        } else if (e.key === "0") {
+            zoomLevel = 1.0; applyZoom();
+            container.scrollLeft = 0; container.scrollTop = 0;
+        } else if (e.key === "Tab") {
+            e.preventDefault();
+            cycleParam(e.shiftKey ? -1 : 1);
+        }
+    });
+}
 
 init();
