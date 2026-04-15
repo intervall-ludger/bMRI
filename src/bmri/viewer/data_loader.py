@@ -194,16 +194,17 @@ def render_overlay_png(
     from PIL import Image
 
     s = np.clip(slice_idx, 0, data.num_slices - 1)
-    h, w = data.shape[0], data.shape[1]
 
     # Start with DICOM grayscale background
     if data.dicom is not None:
         dcm_sl = data.dicom[:, :, s] if data.dicom.ndim == 3 else data.dicom[0, :, :, s]
         dcm_rot = np.rot90(dcm_sl, 3).astype(np.float64)
         dcm_norm = np.clip((dcm_rot - dcm_rot.min()) / (dcm_rot.max() - dcm_rot.min() + 1e-10), 0, 1)
-        canvas = np.stack([dcm_norm] * 3, axis=-1)  # (H, W, 3) grayscale
+        canvas = np.stack([dcm_norm] * 3, axis=-1)  # (H_rot, W_rot, 3)
     else:
-        canvas = np.zeros((h, w, 3))
+        # rot90(k=3) swaps dimensions: (h, w) -> (w, h)
+        canvas_h, canvas_w = data.shape[1], data.shape[0]
+        canvas = np.zeros((canvas_h, canvas_w, 3))
 
     # Parameter map overlay (opaque where valid)
     if param_name in data.parameter_maps:
@@ -373,18 +374,20 @@ def get_pixel_fit(data: ViewerData, img_x: int, img_y: int, slice_idx: int) -> d
 
         # If no valid params (rejected pixel IN mask), do a quick log-linear fit
         if (not s0 or s0 < 0 or not t_relax or t_relax <= 0) and len(signal) >= 2 and result["roi"] > 0:
-            sig = np.array(signal)
-            sig_clipped = np.clip(sig, 1e-10, None)
-            A = np.column_stack([np.ones(len(times)), -np.array(times)])
-            params_ll, _, _, _ = np.linalg.lstsq(A, np.log(sig_clipped), rcond=None)
-            s0 = np.exp(params_ll[0])
-            t_relax = 1.0 / max(params_ll[1], 1e-6)
-            offset = 0
-            fit_params["S0"] = s0
-            fit_params[main_param] = t_relax
-            fit_params["offset"] = 0
-            result["params"] = fit_params
-            result["params_source"] = "loglinear"
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
+            from src.Fitting.AbstractFitting import loglinear_fit
+            s0_arr, t_arr = loglinear_fit(np.array(times), np.array(signal))
+            s0 = float(s0_arr)
+            t_relax = float(t_arr)
+            if t_relax <= 0:
+                t_relax = None
+            else:
+                fit_params["S0"] = s0
+                fit_params[main_param] = t_relax
+                fit_params["offset"] = 0
+                result["params"] = fit_params
+                result["params_source"] = "loglinear"
 
         if s0 and s0 > 0 and t_relax and t_relax > 0:
             offset = fit_params.get("offset", 0) or 0

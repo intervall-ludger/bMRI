@@ -128,12 +128,8 @@ class AbstractFitting(ABC):
 
         # Calculate R² for all pixels vectorized
         fitted = s0_vals[np.newaxis, :] * np.exp(-x[:, np.newaxis] * inv_t[np.newaxis, :])
-        if self.normalize:
-            ss_res = np.sum((pixel_data - fitted) ** 2, axis=0)
-            ss_tot = np.sum((pixel_data - pixel_data.mean(axis=0)) ** 2, axis=0)
-        else:
-            ss_res = np.sum((pixel_data - fitted) ** 2, axis=0)
-            ss_tot = np.sum((pixel_data - pixel_data.mean(axis=0)) ** 2, axis=0)
+        ss_res = np.sum((pixel_data - fitted) ** 2, axis=0)
+        ss_tot = np.sum((pixel_data - pixel_data.mean(axis=0)) ** 2, axis=0)
         r2_vals = np.where(ss_tot > 0, 1 - ss_res / ss_tot, 0.0)
 
         # Store results
@@ -229,6 +225,21 @@ class AbstractFitting(ABC):
         return np.loadtxt(file_path)
 
 
+def loglinear_fit(x: np.ndarray, y: np.ndarray) -> Tuple[float, float]:
+    """Log-linear fit: y = S0 * exp(-x/T). Returns (S0, T).
+
+    Works for single pixel (1D y) or batch (2D y with shape n_pixels x n_echoes).
+    """
+    y = np.atleast_2d(y).astype(np.float64)
+    y_clipped = np.clip(y, 1e-10, None)
+    A = np.column_stack([np.ones(len(x)), -x])
+    params, _, _, _ = np.linalg.lstsq(A, np.log(y_clipped).T, rcond=None)
+    s0 = np.exp(params[0])
+    inv_t = params[1]
+    t = np.where(inv_t > 1e-10, 1.0 / inv_t, 30.0)
+    return s0, t
+
+
 def _loglinear_initial_guess(
     pixel_data_list: list,
     x: np.ndarray,
@@ -236,25 +247,15 @@ def _loglinear_initial_guess(
     bounds: Optional[Tuple] = None,
 ) -> list:
     """Compute log-linear initial guesses for all pixels vectorized."""
-    arr = np.array(pixel_data_list, dtype=np.float64)  # (n_pixels, n_echoes)
+    arr = np.array(pixel_data_list, dtype=np.float64)
     if normalize:
         maxvals = arr.max(axis=1, keepdims=True)
         maxvals[maxvals == 0] = 1
         arr = arr / maxvals
 
-    arr_clipped = np.clip(arr, 1e-10, None)
-    log_data = np.log(arr_clipped)  # (n_pixels, n_echoes)
-
-    A = np.column_stack([np.ones(len(x)), -x])  # (n_echoes, 2)
-    params, _, _, _ = np.linalg.lstsq(A, log_data.T, rcond=None)
-    # params: (2, n_pixels) → [log(S0), 1/T]
-
-    s0_init = np.exp(params[0])
-    inv_t = params[1]
-    t_init = np.where(inv_t > 1e-10, 1.0 / inv_t, 30.0)
+    s0_init, t_init = loglinear_fit(x, arr)
     offset_init = arr[:, -1] * 0.1
 
-    # Clamp to bounds
     if bounds is not None:
         s0_init = np.clip(s0_init, bounds[0][0], bounds[1][0])
         t_init = np.clip(t_init, bounds[0][1], bounds[1][1])

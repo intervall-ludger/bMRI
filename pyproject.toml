@@ -77,6 +77,12 @@ dev = [
     "tqdm>=4.60.0",
 ]
 
+viewer = [
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+    "Pillow>=9.0",
+]
+
 qt6 = [
     # Alternative Qt6 support
     "PyQt6>=6.4.0",
@@ -104,11 +110,12 @@ bmri-example-t1rho = "example_code:t1rho_fitting_example"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["bmri", "bmri.cli", "bmri.cli.commands", "bmri.core", "bmri.core.fitting", "bmri.io", "bmri.utils"]
+packages = ["bmri", "bmri.cli", "bmri.cli.commands", "bmri.core", "bmri.core.fitting", "bmri.io", "bmri.utils", "bmri.viewer", "bmri.postprocessing"]
 
 [tool.setuptools.package-data]
 src = ["py.typed"]
 bmri = ["py.typed"]
+"bmri.viewer" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
