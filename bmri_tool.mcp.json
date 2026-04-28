@@ -1,0 +1,64 @@
+{
+  "name": "bMRI Viewer MCP",
+  "description": "MCP Server for introspecting and debugging bMRI Viewer",
+  "tools": [
+    {
+      "name": "check_data",
+      "description": "Check if viewer data is loaded correctly and inspect pixel fit data",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "results_dir": {
+            "type": "string",
+            "description": "Path to results directory"
+          },
+          "slice_idx": {
+            "type": "integer",
+            "description": "Slice index to check"
+          },
+          "pixel_x": {
+            "type": "integer",
+            "description": "Pixel X coordinate"
+          },
+          "pixel_y": {
+            "type": "integer",
+            "description": "Pixel Y coordinate"
+          }
+        },
+        "required": ["results_dir"]
+      }
+    },
+    {
+      "name": "test_render",
+      "description": "Test rendering of a fit chart to verify data flow",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "results_dir": {
+            "type": "string",
+            "description": "Path to results directory"
+          },
+          "output_file": {
+            "type": "string",
+            "description": "Output HTML file for testing"
+          }
+        },
+        "required": ["results_dir", "output_file"]
+      }
+    },
+    {
+      "name": "verify_files",
+      "description": "Verify all required viewer files exist and check their status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "results_dir": {
+            "type": "string",
+            "description": "Path to results directory"
+          }
+        },
+        "required": ["results_dir"]
+      }
+    }
+  ]
+}

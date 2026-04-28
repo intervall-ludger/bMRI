@@ -373,7 +373,7 @@ def get_pixel_fit(data: ViewerData, img_x: int, img_y: int, slice_idx: int) -> d
         t_relax = fit_params.get(main_param) if main_param else None
 
         # If no valid params (rejected pixel IN mask), do a quick log-linear fit
-        if (not s0 or s0 < 0 or not t_relax or t_relax <= 0) and len(signal) >= 2 and result["roi"] > 0:
+        if main_param and (not s0 or s0 < 0 or not t_relax or t_relax <= 0) and len(signal) >= 2 and result["roi"] > 0:
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
             from src.Fitting.AbstractFitting import loglinear_fit

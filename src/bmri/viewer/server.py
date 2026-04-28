@@ -135,6 +135,9 @@ def switch_patient(idx: int):
     global patient_idx
     if idx < 0 or idx >= len(patients):
         return Response(status_code=404)
+    with _fit_lock:
+        if fit_state["running"]:
+            return JSONResponse({"error": "Cannot switch while fitting"}, status_code=409)
     patient_idx = idx
     _reload_state(Path(patients[idx]["path"]))
     return JSONResponse({"ok": True, "id": patients[idx]["id"]})
@@ -257,9 +260,9 @@ async def start_fit():
                 _reload_state(results_dir)
                 with _fit_lock:
                     fit_state["message"] = "Done"
-        except Exception as e:
+        except Exception:
             with _fit_lock:
-                fit_state["error"] = str(e)
+                fit_state["error"] = "Fit process failed"
         finally:
             with _fit_lock:
                 fit_state["running"] = False
