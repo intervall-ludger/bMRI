@@ -6,11 +6,9 @@ DICOM folders, masks, and configuration parameters.
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 import nibabel as nib
 import numpy as np
-import pydicom
 
 from bmri.exceptions import DICOMStructureError, MaskError, ValidationError
 from bmri.logger import get_logger
@@ -145,12 +143,11 @@ def validate_mask_file(mask_path: Path, expected_shape: tuple[int, ...] | None =
         ) from e
 
     # Validate shape if provided
-    if expected_shape is not None:
-        if mask_data.shape != expected_shape:
-            raise MaskError(
-                f"Mask shape mismatch: expected {expected_shape}, got {mask_data.shape}",
-                details=f"Mask file: {mask_path}",
-            )
+    if expected_shape is not None and mask_data.shape != expected_shape:
+        raise MaskError(
+            f"Mask shape mismatch: expected {expected_shape}, got {mask_data.shape}",
+            details=f"Mask file: {mask_path}",
+        )
 
     # Check if mask contains any non-zero values
     if not np.any(mask_data > 0):
@@ -220,7 +217,7 @@ def validate_boundary(
         )
 
     # Validate that lower < upper
-    for i, (lo, hi) in enumerate(zip(lower, upper)):
+    for i, (lo, hi) in enumerate(zip(lower, upper, strict=False)):
         if lo >= hi:
             raise ValidationError(
                 f"Invalid boundary for parameter {i}: lower ({lo}) >= upper ({hi})",

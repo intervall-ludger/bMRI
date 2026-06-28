@@ -13,13 +13,7 @@ def mono_exp(x, s0, t, offset):
 
 def aronen_t1rho(x, s0, t, offset, TR, T1, alpha, TE, T2star):
     tau = TR - x
-    num = (
-        s0
-        * np.exp(-x / t)
-        * (1 - np.exp(-tau / T1))
-        * np.sin(alpha)
-        * np.exp(-TE / T2star)
-    )
+    num = s0 * np.exp(-x / t) * (1 - np.exp(-tau / T1)) * np.sin(alpha) * np.exp(-TE / T2star)
     den = 1 - np.cos(alpha) * np.exp(-tau / T1) * np.exp(-x / t)
     return num / den + offset
 
@@ -134,4 +128,4 @@ def test_speed_smoke():
     dt = time.perf_counter() - t0
     # 20k pixels should be well under a second on any modern machine
     assert dt < 5.0, f"too slow: {dt:.3f}s"
-    print(f"\n20k pixels fitted in {dt*1000:.0f} ms")
+    print(f"\n20k pixels fitted in {dt * 1000:.0f} ms")

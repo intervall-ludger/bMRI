@@ -14,7 +14,6 @@ if str(_src_path) not in sys.path:
 
 import typer
 from rich.console import Console
-from rich.panel import Panel
 
 from bmri import __version__
 from bmri.config import CLISettings

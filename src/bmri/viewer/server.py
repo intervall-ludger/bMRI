@@ -12,13 +12,31 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from bmri.viewer.data_loader import ViewerData, compute_stats, get_pixel_fit, load_results, render_overlay_png, render_slice_png
+from bmri.viewer.data_loader import (
+    ViewerData,
+    compute_stats,
+    get_pixel_fit,
+    load_results,
+    render_overlay_png,
+    render_slice_png,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
 VALID_CMAPS = {
-    "hot", "viridis", "plasma", "inferno", "magma", "RdBu_r", "jet",
-    "gray", "RdYlGn", "tab10", "coolwarm", "bone", "turbo",
+    "hot",
+    "viridis",
+    "plasma",
+    "inferno",
+    "magma",
+    "RdBu_r",
+    "jet",
+    "gray",
+    "RdYlGn",
+    "tab10",
+    "coolwarm",
+    "bone",
+    "turbo",
 }
 
 app = FastAPI(title="bMRI Viewer")
@@ -109,20 +127,22 @@ def get_manifest():
 
 @app.get("/api/info")
 def get_info():
-    return JSONResponse({
-        "num_slices": state.num_slices,
-        "shape": list(state.shape),
-        "parameters": state.parameters,
-        "modality": state.modality,
-        "has_dicom": state.dicom is not None,
-        "has_mask": state.mask is not None,
-        "has_r2": state.r2 is not None,
-        "times": state.manifest.get("times"),
-        "times_label": state.manifest.get("times_label", "Time"),
-        "boundary": state.manifest.get("boundary"),
-        "min_r2": state.manifest.get("min_r2"),
-        "has_fit_cmd": bool(state.manifest.get("fit_cmd")),
-    })
+    return JSONResponse(
+        {
+            "num_slices": state.num_slices,
+            "shape": list(state.shape),
+            "parameters": state.parameters,
+            "modality": state.modality,
+            "has_dicom": state.dicom is not None,
+            "has_mask": state.mask is not None,
+            "has_r2": state.r2 is not None,
+            "times": state.manifest.get("times"),
+            "times_label": state.manifest.get("times_label", "Time"),
+            "boundary": state.manifest.get("boundary"),
+            "min_r2": state.manifest.get("min_r2"),
+            "has_fit_cmd": bool(state.manifest.get("fit_cmd")),
+        }
+    )
 
 
 @app.get("/api/patients")
@@ -187,7 +207,9 @@ def get_overlay(
         cmap = "hot"
     if not param and state.parameters:
         param = state.parameters[0]
-    png = render_overlay_png(state, slice_idx, param, alpha=alpha, vmin=vmin, vmax=vmax, cmap=cmap, show_mask=mask)
+    png = render_overlay_png(
+        state, slice_idx, param, alpha=alpha, vmin=vmin, vmax=vmax, cmap=cmap, show_mask=mask
+    )
     return Response(content=png, media_type="image/png")
 
 
@@ -228,7 +250,13 @@ async def start_fit():
             return JSONResponse({"error": "No fit_cmd configured in manifest"}, status_code=400)
         # Capture results_dir before thread starts to avoid race with switch_patient
         results_dir = state.results_dir
-        fit_state = {"running": True, "progress": 0, "message": "Starting...", "done": False, "error": None}
+        fit_state = {
+            "running": True,
+            "progress": 0,
+            "message": "Starting...",
+            "done": False,
+            "error": None,
+        }
 
     def _run():
         try:
@@ -279,12 +307,14 @@ async def fit_progress_sse():
         while True:
             with _fit_lock:
                 snapshot = dict(fit_state)
-            data = json.dumps({
-                "progress": snapshot["progress"],
-                "message": snapshot["message"],
-                "done": snapshot["done"],
-                "error": snapshot["error"],
-            })
+            data = json.dumps(
+                {
+                    "progress": snapshot["progress"],
+                    "message": snapshot["message"],
+                    "done": snapshot["done"],
+                    "error": snapshot["error"],
+                }
+            )
             yield f"data: {data}\n\n"
             if snapshot["done"]:
                 break

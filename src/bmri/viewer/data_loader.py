@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import nibabel as nib
@@ -66,7 +67,11 @@ def _build_fallback_manifest(results_dir: Path) -> dict:
     manifest["parameters"] = list(param_maps.keys())
 
     # Standard files
-    for key, pattern in [("r2", "r2.nii.gz"), ("params", "params.nii.gz"), ("dicom", "dicom.nii.gz")]:
+    for key, pattern in [
+        ("r2", "r2.nii.gz"),
+        ("params", "params.nii.gz"),
+        ("dicom", "dicom.nii.gz"),
+    ]:
         p = results_dir / pattern
         if p.exists():
             manifest["files"][key] = pattern
@@ -199,7 +204,9 @@ def render_overlay_png(
     if data.dicom is not None:
         dcm_sl = data.dicom[:, :, s] if data.dicom.ndim == 3 else data.dicom[0, :, :, s]
         dcm_rot = np.rot90(dcm_sl, 3).astype(np.float64)
-        dcm_norm = np.clip((dcm_rot - dcm_rot.min()) / (dcm_rot.max() - dcm_rot.min() + 1e-10), 0, 1)
+        dcm_norm = np.clip(
+            (dcm_rot - dcm_rot.min()) / (dcm_rot.max() - dcm_rot.min() + 1e-10), 0, 1
+        )
         canvas = np.stack([dcm_norm] * 3, axis=-1)  # (H_rot, W_rot, 3)
     else:
         # rot90(k=3) swaps dimensions: (h, w) -> (w, h)
@@ -234,6 +241,7 @@ def render_overlay_png(
             roi_mask = (mask_sl == roi).astype(np.uint8)
             # Simple edge detection: dilate - original
             from scipy.ndimage import binary_dilation
+
             dilated = binary_dilation(roi_mask, iterations=1)
             edge = dilated & ~roi_mask.astype(bool)
             c = tab10(int(roi) % 10)[:3]
@@ -263,16 +271,20 @@ def compute_stats(data: ViewerData) -> dict:
             total = int(np.sum(data.mask == roi))
             valid = int(np.sum(roi_mask))
             if valid == 0:
-                roi_stats.append({"roi": int(roi), "pixels": 0, "total": total, "mean": None, "std": None})
+                roi_stats.append(
+                    {"roi": int(roi), "pixels": 0, "total": total, "mean": None, "std": None}
+                )
                 continue
             vals = pmap[roi_mask]
-            roi_stats.append({
-                "roi": int(roi),
-                "pixels": valid,
-                "total": total,
-                "mean": round(float(np.mean(vals)), 2),
-                "std": round(float(np.std(vals)), 2),
-            })
+            roi_stats.append(
+                {
+                    "roi": int(roi),
+                    "pixels": valid,
+                    "total": total,
+                    "mean": round(float(np.mean(vals)), 2),
+                    "std": round(float(np.std(vals)), 2),
+                }
+            )
         stats[name] = roi_stats
 
     # R² stats
@@ -283,10 +295,12 @@ def compute_stats(data: ViewerData) -> dict:
                 continue
             roi_mask = (data.mask == roi) & (data.r2 > 0)
             if np.any(roi_mask):
-                r2_stats.append({
-                    "roi": int(roi),
-                    "mean_r2": round(float(np.mean(data.r2[roi_mask])), 3),
-                })
+                r2_stats.append(
+                    {
+                        "roi": int(roi),
+                        "mean_r2": round(float(np.mean(data.r2[roi_mask])), 3),
+                    }
+                )
         stats["r2"] = r2_stats
 
     return stats
@@ -373,10 +387,17 @@ def get_pixel_fit(data: ViewerData, img_x: int, img_y: int, slice_idx: int) -> d
         t_relax = fit_params.get(main_param) if main_param else None
 
         # If no valid params (rejected pixel IN mask), do a quick log-linear fit
-        if main_param and (not s0 or s0 < 0 or not t_relax or t_relax <= 0) and len(signal) >= 2 and result["roi"] > 0:
+        if (
+            main_param
+            and (not s0 or s0 < 0 or not t_relax or t_relax <= 0)
+            and len(signal) >= 2
+            and result["roi"] > 0
+        ):
             import sys
+
             sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
             from src.Fitting.AbstractFitting import loglinear_fit
+
             s0_arr, t_arr = loglinear_fit(np.array(times), np.array(signal))
             s0 = float(s0_arr)
             t_relax = float(t_arr)

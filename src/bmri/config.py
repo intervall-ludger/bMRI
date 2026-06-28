@@ -7,7 +7,7 @@ created programmatically.
 
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -66,7 +66,7 @@ class BaseFittingConfig(BaseModel):
             )
 
         # Check that lower < upper
-        for i, (lo, hi) in enumerate(zip(lower, upper)):
+        for i, (lo, hi) in enumerate(zip(lower, upper, strict=False)):
             if lo >= hi:
                 raise ValueError(f"Boundary[{i}]: lower ({lo}) must be < upper ({hi})")
 
@@ -180,8 +180,7 @@ class T1rhoConfig(BaseFittingConfig):
         """Validate that sequence params are provided for advanced models."""
         if self.model != FittingModel.MONO_EXP and self.sequence is None:
             raise ValueError(
-                f"Model {self.model.value} requires sequence parameters "
-                "(TR, T1, alpha, etc.)"
+                f"Model {self.model.value} requires sequence parameters (TR, T1, alpha, etc.)"
             )
         return self
 
@@ -243,6 +242,7 @@ def load_config_from_toml(config_file: Path, config_class: type[BaseModel]) -> B
         >>> config = load_config_from_toml(Path("t1rho.toml"), T1rhoConfig)
     """
     import tomli
+
     from bmri.exceptions import ConfigurationError
 
     if not config_file.exists():

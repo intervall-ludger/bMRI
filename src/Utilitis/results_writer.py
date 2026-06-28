@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 import csv
 from typing import Callable, List, Union, Any, Optional
-from src.Utilitis.utils import get_function_parameter
+from Utilitis.utils import get_function_parameter
 from copy import deepcopy
 
 def save_results(

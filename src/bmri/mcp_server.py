@@ -3,11 +3,8 @@ import asyncio
 import json
 import logging
 import subprocess
-import time
 from pathlib import Path
-from typing import Any
 
-import aiohttp
 import httpx
 
 logging.basicConfig(level=logging.DEBUG)
@@ -24,7 +21,14 @@ class BMRIViewer:
     def __init__(self):
         self.process = None
         self.client = None
-        self.test_data_dir = PROJECT_ROOT / "test" / "resources" / "Mrtc-Studie_Cartilage_transplantation_05_GAPF97478" / "20211125_0925" / "T1rho"
+        self.test_data_dir = (
+            PROJECT_ROOT
+            / "test"
+            / "resources"
+            / "Mrtc-Studie_Cartilage_transplantation_05_GAPF97478"
+            / "20211125_0925"
+            / "T1rho"
+        )
 
     async def __aenter__(self):
         await self.start_viewer()
@@ -44,11 +48,14 @@ class BMRIViewer:
         # Start new process
         self.process = subprocess.Popen(
             [
-                "uv", "run",
-                "-m", "bmri.viewer",
+                "uv",
+                "run",
+                "-m",
+                "bmri.viewer",
                 str(self.test_data_dir),
-                "--port", str(VIEWER_PORT),
-                "--no-browser"
+                "--port",
+                str(VIEWER_PORT),
+                "--no-browser",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -57,7 +64,7 @@ class BMRIViewer:
 
         # Wait for server to be ready
         max_retries = 30
-        for attempt in range(max_retries):
+        for _attempt in range(max_retries):
             try:
                 async with httpx.AsyncClient() as client:
                     resp = await client.get(f"{VIEWER_HOST}/api/info", timeout=2)
@@ -65,7 +72,7 @@ class BMRIViewer:
                         logger.info("✓ Viewer started successfully")
                         self.client = httpx.AsyncClient()
                         return {"status": "ok", "port": VIEWER_PORT}
-            except Exception as e:
+            except Exception:
                 await asyncio.sleep(0.5)
 
         raise RuntimeError(f"Viewer failed to start after {max_retries} attempts")
@@ -87,10 +94,7 @@ class BMRIViewer:
         """Kill any existing viewer process."""
         try:
             subprocess.run(
-                f"pkill -f 'bmri.viewer' || true",
-                shell=True,
-                check=False,
-                capture_output=True
+                "pkill -f 'bmri.viewer' || true", shell=True, check=False, capture_output=True
             )
         except Exception as e:
             logger.debug(f"Could not kill existing process: {e}")
@@ -140,7 +144,7 @@ class BMRIViewer:
         # 2. Test /api/manifest
         manifest = await self.api_call("/api/manifest")
         results["manifest"] = manifest
-        logger.info(f"✓ /api/manifest loaded")
+        logger.info("✓ /api/manifest loaded")
 
         # 3. Test /api/stats
         stats = await self.api_call("/api/stats")
@@ -155,8 +159,7 @@ class BMRIViewer:
         results["overlays"] = {}
         for param in api_info.get("parameters", [])[:2]:  # Test first 2 params
             result = await self.api_call(
-                f"/api/overlay/{slice_idx}",
-                params={"param": param, "mask": True}
+                f"/api/overlay/{slice_idx}", params={"param": param, "mask": True}
             )
             results["overlays"][param] = result
             if result["status"] == "ok":
@@ -169,7 +172,7 @@ class BMRIViewer:
         pixel = await self.api_call(f"/api/pixel/{cx}/{cy}/{slice_idx}")
         results["pixel"] = pixel
         if pixel["status"] == "ok":
-            logger.info(f"✓ /api/pixel: got fit data")
+            logger.info("✓ /api/pixel: got fit data")
         else:
             logger.error(f"✗ /api/pixel failed: {pixel}")
 
@@ -262,10 +265,14 @@ async def main():
 
             print("\nDetailed results saved to test_results.json")
             with open("test_results.json", "w") as f:
-                json.dump({
-                    "endpoints": endpoint_results,
-                    "frontend": frontend_results,
-                }, f, indent=2)
+                json.dump(
+                    {
+                        "endpoints": endpoint_results,
+                        "frontend": frontend_results,
+                    },
+                    f,
+                    indent=2,
+                )
 
     except Exception as e:
         logger.error(f"Test failed: {e}", exc_info=True)

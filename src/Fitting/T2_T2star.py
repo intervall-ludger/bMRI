@@ -2,8 +2,8 @@ from typing import Union, List, Tuple
 import numpy as np
 import pydicom
 from pathlib import Path
-from src.Utilitis.read import get_dcm_list, get_dcm_array, split_dcm_list
-from src.Utilitis import save_results, load_nii, save_nii
+from Utilitis.read import get_dcm_list, get_dcm_array, split_dcm_list
+from Utilitis import save_results, load_nii, save_nii
 from .AbstractFitting import AbstractFitting, cpu_count
 
 

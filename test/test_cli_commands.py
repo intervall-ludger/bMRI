@@ -1,15 +1,13 @@
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
-import importlib
 import pytest
-import typer
 from typer.testing import CliRunner
 
 legacy_t2star = importlib.import_module("src.Fitting.T2_T2star")
 legacy_t1rho = importlib.import_module("src.Fitting.T1rho_T2prep")
-from bmri.cli.main import app
 from bmri.cli.commands.fit import (
     _copy_results_and_display,
     _print_csv_results,
@@ -19,8 +17,7 @@ from bmri.cli.commands.fit import (
     fit_t2star,
     parse_boundary_string,
 )
-from bmri.config import FittingModel
-
+from bmri.cli.main import app
 
 FAKE_NIFTI_FILES = [
     "map.nii.gz",
@@ -151,7 +148,9 @@ def test_fit_t1rho_function(tmp_path: Path, dicom_folder: Path, mask_file: Path)
     _assert_copied_results(output_dir, ["S0", "offset", "t1rho"])
 
 
-def test_fit_t2star_with_custom_boundary(tmp_path: Path, dicom_folder: Path, mask_file: Path) -> None:
+def test_fit_t2star_with_custom_boundary(
+    tmp_path: Path, dicom_folder: Path, mask_file: Path
+) -> None:
     output_dir = tmp_path / "boundary_results"
     fit_t2star(
         dicom_folder=dicom_folder,

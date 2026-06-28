@@ -5,8 +5,8 @@ import pydicom
 import numpy as np
 from numba import njit
 
-from src.Utilitis import save_results, load_nii
-from src.Utilitis.read import get_dcm_list, split_dcm_list, get_dcm_array
+from Utilitis import save_results, load_nii
+from Utilitis.read import get_dcm_list, split_dcm_list, get_dcm_array
 from .AbstractFitting import AbstractFitting, ABC, cpu_count
 
 

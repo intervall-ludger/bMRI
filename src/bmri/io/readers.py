@@ -4,7 +4,6 @@ This module provides functions for reading medical imaging data with proper
 validation, logging, and error handling.
 """
 
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -187,9 +186,7 @@ def _validate_locations(locations: dict[float, list[Path]]) -> dict[float, list[
     )
 
 
-def get_dcm_array(
-    dcm_files: list[Path], apply_rescale: bool = True
-) -> FloatArray3D | IntArray3D:
+def get_dcm_array(dcm_files: list[Path], apply_rescale: bool = True) -> FloatArray3D | IntArray3D:
     """Load DICOM files into numpy array.
 
     Reads pixel data from DICOM files and optionally applies RescaleSlope and
@@ -226,9 +223,7 @@ def get_dcm_array(
                     slope = float(dcm.RescaleSlope)
                     intercept = float(dcm.RescaleIntercept)
                     pixel_array = pixel_array * slope + intercept
-                    logger.debug(
-                        f"Applied rescale: slope={slope}, intercept={intercept}"
-                    )
+                    logger.debug(f"Applied rescale: slope={slope}, intercept={intercept}")
                 except AttributeError:
                     logger.debug(f"No RescaleSlope/Intercept in {dcm_file.name}")
 
@@ -249,8 +244,7 @@ def get_dcm_array(
 
     if failed_files:
         logger.warning(
-            f"Successfully read {len(arrays)}/{len(dcm_files)} files "
-            f"({len(failed_files)} failed)"
+            f"Successfully read {len(arrays)}/{len(dcm_files)} files ({len(failed_files)} failed)"
         )
 
     return np.array(arrays)
@@ -275,9 +269,7 @@ class NIfTIMask:
     def __post_init__(self) -> None:
         """Validate mask data."""
         if self.array.ndim not in (2, 3):
-            raise ValueError(
-                f"Mask must be 2D or 3D, got {self.array.ndim}D: {self.array.shape}"
-            )
+            raise ValueError(f"Mask must be 2D or 3D, got {self.array.ndim}D: {self.array.shape}")
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -332,9 +324,7 @@ def load_nii(file_path: Path, validate: bool = True) -> NIfTIMask:
         ) from e
 
     # Create mask object
-    mask = NIfTIMask(
-        array=array, affine=affine, header=header, file_path=file_path
-    )
+    mask = NIfTIMask(array=array, affine=affine, header=header, file_path=file_path)
 
     # Validation
     if validate:
@@ -345,9 +335,7 @@ def load_nii(file_path: Path, validate: bool = True) -> NIfTIMask:
             )
 
         logger.info(
-            f"Loaded mask: {mask.shape}, "
-            f"{mask.num_masked_voxels} voxels, "
-            f"{mask.num_rois} ROIs"
+            f"Loaded mask: {mask.shape}, {mask.num_masked_voxels} voxels, {mask.num_rois} ROIs"
         )
 
     return mask

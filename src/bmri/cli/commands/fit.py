@@ -18,10 +18,9 @@ from bmri.config import (
     FittingModel,
     T1Config,
     T1rhoConfig,
-    T1rhoSequenceConfig,
     T2Config,
+    load_config_from_toml,
 )
-from bmri.config import load_config_from_toml
 from bmri.exceptions import BMRIError
 from bmri.logger import console, get_logger
 from bmri.validators import (
@@ -67,7 +66,7 @@ def _print_csv_results(csv_file: Path, param_name: str) -> None:
         param_name: Parameter name for table title (e.g., "T2*", "S0")
     """
     try:
-        with open(csv_file, "r") as f:
+        with open(csv_file) as f:
             reader = csv.DictReader(f, delimiter=";")
             rows = list(reader)
 
@@ -140,9 +139,7 @@ def _copy_results_and_display(
         logger.debug(f"Copied {acquisition_file.name} to {output_dir}")
 
     # Display file summary
-    console.print(
-        f"\n[bold]Output Files:[/bold] {len(nifti_files)} NIfTI, {len(csv_files)} CSV"
-    )
+    console.print(f"\n[bold]Output Files:[/bold] {len(nifti_files)} NIfTI, {len(csv_files)} CSV")
     console.print(f"[dim]Location:[/dim] {output_dir}\n")
 
     # Display ROI statistics from CSV files
@@ -171,7 +168,8 @@ def estimate_boundaries_from_data(
         Estimated boundary tuple ((lower...), (upper...))
     """
     import numpy as np
-    from bmri.io.readers import get_dcm_list, split_dcm_list, get_dcm_array, load_nii
+
+    from bmri.io.readers import get_dcm_array, get_dcm_list, split_dcm_list
 
     logger.info("Estimating boundaries from data...")
 
@@ -467,7 +465,6 @@ def fit_t2star(
             sys.path.insert(0, str(_project_root))
 
         from src.Fitting.T2_T2star import T2_T2star
-        from src.Utilitis import load_nii
 
         # Create fitter instance
         fitter = T2_T2star(

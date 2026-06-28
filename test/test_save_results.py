@@ -1,11 +1,11 @@
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from src.Fitting.T1rho_T2prep import T1rho_T2prep, fit_T1rho_wrapper_aronen
 from src.Utilitis import save_results
-from pathlib import Path
 
 
 def test():
@@ -38,7 +38,7 @@ def test():
     )
 
     assert len(return_list) == 1
-    assert "1" in return_list[0].keys()
+    assert "1" in return_list[0]
 
     for _ in [
         "offset_map.nii.gz",

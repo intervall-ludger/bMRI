@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import nibabel as nib
 import numpy as np
@@ -62,7 +62,9 @@ def _create_dicom_file(
     dataset.save_as(str(path), write_like_original=False)
 
 
-def create_dicom_series(folder: Path, slices: int = 2, echoes: Iterable[float] | None = None) -> None:
+def create_dicom_series(
+    folder: Path, slices: int = 2, echoes: Iterable[float] | None = None
+) -> None:
     """Generate a small DICOM series with multiple echoes."""
     folder.mkdir(parents=True, exist_ok=True)
 

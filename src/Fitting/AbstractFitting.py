@@ -8,7 +8,7 @@ from typing import Callable, Tuple, Optional, Union
 import numpy as np
 from numba import njit
 from scipy.optimize import curve_fit
-from src.Utilitis.utils import get_function_parameter
+from Utilitis.utils import get_function_parameter
 
 
 class AbstractFitting(ABC):

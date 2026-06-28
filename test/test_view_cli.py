@@ -68,7 +68,9 @@ def test_prepare_t2star_viewer_missing_files(tmp_path: Path) -> None:
         prepare_t2star_viewer_inputs(valid, parameter="unknown")
 
 
-def test_launch_t2star_viewer_uses_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_launch_t2star_viewer_uses_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import bmri.cli.commands.view as view
 
     captured: dict[str, object] = {}
@@ -83,7 +85,7 @@ def test_launch_t2star_viewer_uses_overrides(tmp_path: Path, monkeypatch: pytest
 
     class FakeApp:
         @classmethod
-        def instance(cls) -> "FakeApp | None":
+        def instance(cls) -> FakeApp | None:
             return None
 
         def __init__(self, *args: object, **kwargs: object) -> None:
@@ -132,9 +134,10 @@ def test_launch_t2star_viewer_uses_overrides(tmp_path: Path, monkeypatch: pytest
 
 
 def test_view_cli_passes_color_limits(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
     import bmri.cli.commands.view as view
     from bmri.cli import main
-    from typer.testing import CliRunner
 
     res_dir = tmp_path / "results"
     res_dir.mkdir()
@@ -180,9 +183,10 @@ def test_view_cli_passes_color_limits(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
 
 def test_view_cli_handles_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
     import bmri.cli.commands.view as view
     from bmri.cli import main
-    from typer.testing import CliRunner
 
     res_dir = tmp_path / "results"
     res_dir.mkdir()

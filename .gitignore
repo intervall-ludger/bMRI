@@ -134,3 +134,11 @@ dmypy.json
 
 # Claude
 .claude/
+
+# Test artifacts
+__tests/unit/coverage/
+__tests/unit/report.html
+__tests/unit/report.xml
+
+# Rust build
+rust/target/

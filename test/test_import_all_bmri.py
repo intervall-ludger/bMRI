@@ -13,4 +13,3 @@ from bmri.cli import main as cli_main  # noqa: F401
 from bmri.cli.commands import fit as cli_fit  # noqa: F401
 from bmri.cli.commands import view as cli_view  # noqa: F401
 from bmri.io import readers  # noqa: F401
-

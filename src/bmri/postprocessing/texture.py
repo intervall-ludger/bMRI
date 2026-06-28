@@ -11,11 +11,14 @@ from skimage.feature import graycomatrix, graycoprops
 @dataclass
 class TextureConfig:
     """Configuration for GLCM texture analysis."""
+
     gray_levels: int = 16
     distances: list[int] = field(default_factory=lambda: [1])
     angles: list[float] = field(default_factory=lambda: [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4])
     clip_range: tuple[float, float] | None = None
-    features: list[str] = field(default_factory=lambda: ["contrast", "homogeneity", "energy", "variance"])
+    features: list[str] = field(
+        default_factory=lambda: ["contrast", "homogeneity", "energy", "variance"]
+    )
     backend: str = "skimage"  # "skimage" or "pyradiomics"
 
 
@@ -120,7 +123,8 @@ class TextureAnalysis:
         quantized = np.zeros_like(roi_patch, dtype=np.uint8)
         quantized[mask_patch] = np.clip(
             ((valid - vmin) / (vmax - vmin) * (cfg.gray_levels - 1)).astype(np.uint8),
-            0, cfg.gray_levels - 1,
+            0,
+            cfg.gray_levels - 1,
         )
         # Set non-ROI to 0 — we'll handle this by only computing on valid pairs
         quantized[~mask_patch] = 0
@@ -235,13 +239,17 @@ class TextureAnalysis:
 
             for key, val in result.items():
                 if key.startswith("original_"):
-                    feat_name = key.replace("original_firstorder_", "fo_").replace("original_glcm_", "glcm_")
-                    rows.append({
-                        "roi": int(roi),
-                        "slice": -1,  # pyradiomics aggregates over volume
-                        "feature": feat_name,
-                        "value": float(val),
-                    })
+                    feat_name = key.replace("original_firstorder_", "fo_").replace(
+                        "original_glcm_", "glcm_"
+                    )
+                    rows.append(
+                        {
+                            "roi": int(roi),
+                            "slice": -1,  # pyradiomics aggregates over volume
+                            "feature": feat_name,
+                            "value": float(val),
+                        }
+                    )
 
         return pd.DataFrame(rows)
 

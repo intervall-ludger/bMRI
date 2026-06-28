@@ -1,4 +1,4 @@
-from src.Utilitis import save_results, load_nii, get_dcm_array
+from Utilitis import save_results, load_nii, get_dcm_array
 from pathlib import Path
 import numpy as np
 from typing import Union, Tuple, Any

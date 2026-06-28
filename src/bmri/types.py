@@ -5,7 +5,7 @@ code readability and maintainability.
 """
 
 from pathlib import Path
-from typing import Callable, Protocol, TypeAlias
+from typing import Protocol, TypeAlias
 
 import numpy as np
 import numpy.typing as npt

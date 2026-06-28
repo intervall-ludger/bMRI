@@ -4,18 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bMRI"
-version = "0.2.0"
-description = "Bio-sensitive MRI Analysis Framework with professional CLI tools"
+version = "0.3.0"
+description = "Quantitative MRI analysis: per-voxel T1/T2/T2*/T1rho fitting with a Rust backend, ROI statistics, GLCM textures, and a web viewer."
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "GPL-3.0"}
+license = {text = "MIT"}
 authors = [
     {name = "Ludger Radke", email = "ludger.radke@example.com"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -36,60 +36,61 @@ dependencies = [
     "nibabel>=3.2.0",
     "dicom2nifti>=2.3.0",
     "GoNifti @ https://github.com/MPR-UKD/GoNifti/raw/main/dist/GoNifti-0.3-py3-none-any.whl#sha256=ded788fb08dad94b6f86edcef73f90429fb7bb993a8d75048f1dbd18b51c90ed",
-    # Image processing
     "scikit-image>=0.18.0",
     "PyWavelets>=1.1.0",
-    # Visualization
-    "PyQt5>=5.15.0",
     "matplotlib>=3.4.0",
-    "mayavi>=4.7.0",
-    "pyvista>=0.32.0",
-    "vtk>=9.0.0",
-    # Jupyter/Interactive visualization
-    "ipyvolume>=0.6.0",
-    "ipywidgets>=7.6.0",
-    "pythreejs>=2.3.0",
-    "ipywebrtc>=0.6.0",
     "typer[all]>=0.20.0",
     "pydantic>=2.12.4",
     "pydantic-settings>=2.12.0",
     "tomli>=2.3.0",
     "natsort>=8.4.0",
     "openpyxl>=3.1.5",
+    "rich>=13.0.0",
+    "tqdm>=4.60.0",
     "maskregistration",
 ]
 
 [project.optional-dependencies]
-dev = [
-    # Testing
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-html>=4.0.0",
-    "pytest-metadata>=3.0.0",
-    "coverage[toml]>=7.0.0",  # Requires numba>=0.59
-
-    # Code quality
-    "black>=23.0.0",
-    "pre-commit>=3.0.0",
-
-    # CLI improvements
-    "rich>=13.0.0",
-    "tqdm>=4.60.0",
-]
-
 viewer = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
     "Pillow>=9.0",
 ]
 
-qt6 = [
-    # Alternative Qt6 support
-    "PyQt6>=6.4.0",
+qt = [
+    "PyQt5>=5.15.0",
+    "pyvista>=0.32.0",
+    "vtk>=9.0.0",
+    "ipyvolume>=0.6.0",
+    "ipywidgets>=7.6.0",
+    "pythreejs>=2.3.0",
+    "ipywebrtc>=0.6.0",
+]
+
+mcp = [
+    "mcp>=1.0.0",
+    "sse-starlette>=2.1.0",
+]
+
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-html>=4.0.0",
+    "pytest-metadata>=3.0.0",
+    "coverage[toml]>=7.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "pre-commit>=3.0.0",
+]
+
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
 ]
 
 all = [
-    "bMRI[dev,qt6]",
+    "bMRI[viewer,qt,mcp,dev,docs]",
 ]
 
 [project.urls]
@@ -98,22 +99,24 @@ Repository = "https://github.com/ludgerradke/bMRI"
 Issues = "https://github.com/ludgerradke/bMRI/issues"
 
 [project.scripts]
-# Main CLI entry point
 bmri = "bmri.cli.main:cli_entry_point"
-
-# Legacy example scripts (deprecated)
-bmri-example-t2star = "example_code:t2star_fitting_example"
-bmri-example-t2 = "example_code:t2_fitting_example"
-bmri-example-t1rho = "example_code:t1rho_fitting_example"
-
-# Tool configurations
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["bmri", "bmri.cli", "bmri.cli.commands", "bmri.core", "bmri.core.fitting", "bmri.io", "bmri.utils", "bmri.viewer", "bmri.postprocessing"]
+packages = [
+    "bmri",
+    "bmri.cli",
+    "bmri.cli.commands",
+    "bmri.core",
+    "bmri.core.fitting",
+    "bmri.fitting",
+    "bmri.io",
+    "bmri.utils",
+    "bmri.viewer",
+    "bmri.postprocessing",
+]
 
 [tool.setuptools.package-data]
-src = ["py.typed"]
 bmri = ["py.typed"]
 "bmri.viewer" = ["static/*"]
 
@@ -122,12 +125,9 @@ testpaths = ["test"]
 python_files = "test_*.py"
 addopts = [
     "-v",
-    "--cov=src",
+    "--cov=src/bmri",
+    "--cov-report=term-missing",
     "--cov-report=html:__tests/unit/coverage",
-    "--cov-report=xml:__tests/unit/coverage/coverage.xml",
-    "--html=__tests/unit/report.html",
-    "--self-contained-html",
-    "--junitxml=__tests/unit/report.xml",
 ]
 
 [tool.coverage.run]
@@ -136,7 +136,6 @@ omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/site-packages/*",
-    "src/bmri/cli/commands/fit.py",
 ]
 
 [tool.coverage.report]
@@ -151,28 +150,46 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ]
 
-[tool.black]
+[tool.ruff]
 line-length = 100
-target-version = ['py310']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.venv
-  | build
-  | dist
-)/
-'''
+target-version = "py310"
+extend-exclude = [
+    "src/bMRI.egg-info",
+    "src/Visualization",
+    "__tests",
+    "build",
+    "dist",
+]
 
-[tool.ty.environment]
-python-version = "3.10"
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP", "SIM"]
+ignore = [
+    "E501",  # line length handled by formatter
+    "E402",  # module imports not at top (path hacks)
+    "B008",  # function calls in argument defaults (typer pattern)
+    "B904",  # raise from inside except
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+files = ["src/bmri"]
 
 [tool.uv.sources]
 maskregistration = { git = "https://github.com/MPR-UKD/MaskRegistration.git", tag = "v0.2.0" }
 
 [dependency-groups]
 dev = [
-    "ty>=0.0.9",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "pytest>=9.0.1",
+    "pytest-cov>=7.0.0",
+    "pytest-html>=4.1.1",
+    "pytest-metadata>=3.1.1",
 ]

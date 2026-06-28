@@ -4,9 +4,9 @@ from typing import Callable, Dict, List, Tuple, Union
 import numpy as np
 from numba import njit
 
-from src.Fitting.AbstractFitting import AbstractFitting, cpu_count
-from src.Utilitis import load_nii, save_nii, save_results
-from src.Utilitis.read import get_dcm_array, get_dcm_list, split_dcm_list
+from Fitting.AbstractFitting import AbstractFitting, cpu_count
+from Utilitis import load_nii, save_nii, save_results
+from Utilitis.read import get_dcm_array, get_dcm_list, split_dcm_list
 
 
 def fit_T1rho_wrapper_raush(

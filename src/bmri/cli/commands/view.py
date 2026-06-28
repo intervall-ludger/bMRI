@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Callable
+from typing import Annotated
 
 import numpy as np
 import typer
@@ -185,14 +186,14 @@ def view_web_command(
     """Launch the web-based viewer for fitting results."""
     console.print(
         Panel.fit(
-            "[bold cyan]bMRI Web Viewer[/bold cyan]\n"
-            f"[dim]http://localhost:{port}[/dim]",
+            f"[bold cyan]bMRI Web Viewer[/bold cyan]\n[dim]http://localhost:{port}[/dim]",
             border_style="cyan",
         )
     )
     try:
         results_dir = _resolve_results_dir(results)
         from bmri.viewer import launch_viewer
+
         launch_viewer(results_dir, port=port, open_browser=not no_browser)
     except (FileNotFoundError, ValueError) as exc:
         console.print(f"[bold red]Error:[/bold red] {exc}")
