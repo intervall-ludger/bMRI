@@ -125,10 +125,21 @@ class AbstractFitting(ABC):
         region_bounds: Optional[dict] = None,
         signal_threshold: float = 0.0,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Fit via the native Rust backend (Levenberg-Marquardt, parallel over pixels)."""
+        """Fit via the native Rust backend.
+        Param count is derived from the default `self.bounds` (3 for mono-exp
+        family, 4 for IVIM / bi-exp T2*) or from the first per-label entry in
+        `region_bounds`. Custom expression models use the bounds shape to
+        determine arity."""
         import bmri_fit
 
+        # Resolve number of parameters from whichever bounds source defines it.
         num_params = 3
+        if self.bounds is not None:
+            num_params = len(self.bounds[0])
+        elif region_bounds:
+            first_lo, _ = next(iter(region_bounds.values()))
+            num_params = len(first_lo)
+
         fit_maps = np.full((num_params, *mask.shape), np.nan)
         r2_map = np.zeros(mask.shape)
 
@@ -149,7 +160,7 @@ class AbstractFitting(ABC):
             dicom[:, coords[0], coords[1], coords[2]].T, dtype=np.float64
         )
         n_pix = signals.shape[0]
-        lower, upper = self._build_pixel_bounds(mask, coords, n_pix, region_bounds)
+        lower, upper = self._build_pixel_bounds(mask, coords, n_pix, region_bounds, num_params)
 
         seq = self.rust_seq or {}
         params, r2 = bmri_fit.fit_volume(
@@ -165,6 +176,7 @@ class AbstractFitting(ABC):
             t2star=float(seq.get("T2star", 0.0)),
             normalize=self.normalize,
             max_iter=100,
+            expression=getattr(self, "rust_expression", None),
         )
 
         good = r2 > min_r2
@@ -180,13 +192,13 @@ class AbstractFitting(ABC):
         coords: Tuple[np.ndarray, ...],
         n_pix: int,
         region_bounds: Optional[dict],
+        num_params: int = 3,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Build per-pixel (n_pix, 3) lower/upper bound arrays from default + per-label bounds."""
-        default = (
-            self.bounds
-            if self.bounds is not None
-            else ((-1e8, 1e-3, -1e8), (1e8, 1e8, 1e8))
-        )
+        """Build per-pixel (n_pix, num_params) lower/upper bound arrays."""
+        if self.bounds is not None:
+            default = self.bounds
+        else:
+            default = ([-1e8] * num_params, [1e8] * num_params)
         lower = np.tile(np.asarray(default[0], dtype=np.float64), (n_pix, 1))
         upper = np.tile(np.asarray(default[1], dtype=np.float64), (n_pix, 1))
 
@@ -199,7 +211,8 @@ class AbstractFitting(ABC):
 
         lower = np.nan_to_num(lower, neginf=-1e8, posinf=1e8)
         upper = np.nan_to_num(upper, neginf=-1e8, posinf=1e8)
-        lower[:, 1] = np.clip(lower[:, 1], 1e-3, None)  # T must stay positive
+        if num_params >= 2:
+            lower[:, 1] = np.clip(lower[:, 1], 1e-12, None)  # T/D must stay positive
         return np.ascontiguousarray(lower), np.ascontiguousarray(upper)
 
     def _fit_loglinear(
@@ -247,9 +260,7 @@ class AbstractFitting(ABC):
             t_vals[out_of_bounds] = np.nan
 
         # Calculate R² for all pixels vectorized
-        fitted = s0_vals[np.newaxis, :] * np.exp(
-            -x[:, np.newaxis] * inv_t[np.newaxis, :]
-        )
+        fitted = s0_vals[np.newaxis, :] * np.exp(-x[:, np.newaxis] * inv_t[np.newaxis, :])
         ss_res = np.sum((pixel_data - fitted) ** 2, axis=0)
         ss_tot = np.sum((pixel_data - pixel_data.mean(axis=0)) ** 2, axis=0)
         r2_vals = np.where(ss_tot > 0, 1 - ss_res / ss_tot, 0.0)
@@ -257,9 +268,7 @@ class AbstractFitting(ABC):
         # Store results
         good = np.isfinite(t_vals) & (r2_vals > min_r2)
         idx = (coords[0][good], coords[1][good], coords[2][good])
-        fit_maps[0][idx] = (
-            s0_vals[good] if not self.normalize else s0_vals[good] * maxvals[good]
-        )
+        fit_maps[0][idx] = s0_vals[good] if not self.normalize else s0_vals[good] * maxvals[good]
         fit_maps[1][idx] = t_vals[good]
         fit_maps[2][idx] = 0.0  # offset = 0
 
@@ -405,9 +414,7 @@ def _fit_chunk(
     results = []
     for idx, y in enumerate(pixel_data_list):
         p0 = p0_list[idx] if p0_list is not None else None
-        param = fit_pixel(
-            y, x, fit_function, bounds, config, normalize, calc_p0, p0_override=p0
-        )
+        param = fit_pixel(y, x, fit_function, bounds, config, normalize, calc_p0, p0_override=p0)
         if param is None:
             results.append((None, 0.0))
         else:

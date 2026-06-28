@@ -33,6 +33,7 @@ plugins:
 nav:
   - Home: index.md
   - Quick start: quickstart.md
+  - Models: models.md
   - Fitting backends: backends.md
   - API reference: api.md
   - Validation: validation.md

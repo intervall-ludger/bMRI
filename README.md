@@ -44,6 +44,21 @@ uv pip install target/wheels/bmri_fit-*.whl
 
 After install, pass `method="rust"` to `fit()`.
 
+## What you can fit
+
+| Family | Class | Params |
+|---|---|---|
+| T2, T2*, T1ρ mono-exp | `T2T2star`, `T1rho_T2prep` | 3 |
+| T1 inversion recovery | `InversionRecoveryT1` | 3 |
+| DWI ADC | `DWIMonoExp` | 3 |
+| DWI Kurtosis | `DWIKurtosis` | 3 |
+| DWI IVIM bi-exp | `DWIIvim` | 4 |
+| T2\* bi-exponential | `T2StarBiExp` | 4 |
+| Stretched exponential | `StretchedExp` | 3 |
+| **Your own model as string** | `CustomExpression` | up to 4 |
+
+All of these work with `method="rust"` for a 20-40\* speed-up.
+
 ## Quick start
 
 ### From Python
@@ -92,11 +107,31 @@ bmri fit t2 --dicom path/to/T2_folder --mask mask.nii.gz --out output/
 bmri fit t2star --dicom path/to/T2star_folder --mask mask.nii.gz --backend rust
 ```
 
+### Your own model in one line
+
+The Rust backend can fit any user-defined expression:
+
+```python
+from bmri.fitting import CustomExpression
+
+model = CustomExpression(
+    expression="S0 * exp(-x/T) + C",
+    boundary=([0, 0, -1], [10, 200, 1]),
+)
+fit_maps, r2 = model.fit(data, mask, te, method="rust")
+```
+
+The expression is parsed and compiled to a stack-based program by Rust,
+so per-voxel evaluation has zero Python-callback overhead. Same speed as
+built-in models. Identifiers `x`, `p0..p7`, `S0`, `T`, `D`, `K`, `f`, `C`
+are recognised; functions `exp`, `log`, `sin`, `cos`, `sqrt`, `pow` and
+basic operators work as expected. See [docs/models.md](docs/models.md).
+
 ## API surface
 
 | Module | What it gives you |
 |---|---|
-| `bmri.fitting` | `T2T2star`, `T1rho_T2prep`, `InversionRecoveryT1`, `AbstractFitting` |
+| `bmri.fitting` | `T2T2star`, `T1rho_T2prep`, `InversionRecoveryT1`, `DWIMonoExp`, `DWIKurtosis`, `DWIIvim`, `T2StarBiExp`, `StretchedExp`, `CustomExpression`, `AbstractFitting` |
 | `bmri.io` | `load_nii`, `save_nii`, `get_dcm_list`, `get_dcm_array`, `split_dcm_list` |
 | `bmri.postprocessing.texture` | GLCM texture features (Haralick) |
 | `bmri.viewer` | Web-based DICOM + map viewer (needs `viewer` extra) |
