@@ -52,14 +52,21 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
-      - name: Build Rust wheel
+      - name: Install Python deps (creates .venv)
+        run: uv sync --extra dev
+
+      - name: Build Rust wheel and install into the project venv
         run: |
           cd rust
           uvx maturin build --release
-          uv pip install --system target/wheels/bmri_fit-*.whl
-
-      - name: Install Python deps
-        run: uv sync --extra dev
+          # Install into the uv project venv (not the system interpreter)
+          uv pip install target/wheels/bmri_fit-*.whl
 
       - name: Run tests including Rust backend
-        run: uv run pytest test/test_fitting_accuracy.py test/test_backend_equivalence.py --no-cov -q
+        run: |
+          uv run pytest \
+            test/test_fitting_accuracy.py \
+            test/test_backend_equivalence.py \
+            test/test_dwi_models.py \
+            test/test_spectrum.py \
+            --no-cov -q
