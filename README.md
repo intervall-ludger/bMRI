@@ -106,6 +106,24 @@ cd bMRI
 pip install -e ".[dev]"
 ```
 
+### Optional: native Rust fitting backend
+
+The pixel fitting can run through a native Levenberg-Marquardt backend that is much faster
+than the per-pixel scipy path. It is optional: if the module is not built, bMRI falls back to
+the Python backend automatically.
+
+```bash
+# Needs a Rust toolchain (https://rustup.rs)
+cd rust
+uvx maturin build --release
+uv pip install target/wheels/bmri_fit-*.whl
+```
+
+Once installed, select it per fit with `--backend rust`. With `--fit-region full` the whole
+volume is fitted and the mask is only used for region bounds and ROI statistics. Per-label
+bounds are passed via the `region_bounds` argument of `fit()` (label 0 / unlisted labels are
+fit freely).
+
 ### Verify Installation
 
 ```bash

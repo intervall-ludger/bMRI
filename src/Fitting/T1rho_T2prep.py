@@ -128,6 +128,7 @@ class T1rho_T2prep(AbstractFitting):
                     config["TE"],
                     config["T2star"],
                 )
+                rust_model = "aronen_t1rho"
             else:
                 fit = fit_T2_wrapper_aronen(
                     config["TR"],
@@ -136,10 +137,20 @@ class T1rho_T2prep(AbstractFitting):
                     config["TE"],
                     config["T2star"],
                 )
+                rust_model = "aronen_t2"
+            rust_seq = {k: config[k] for k in ("TR", "T1", "alpha", "TE", "T2star")}
         else:
             fit = fit_mono_exp_wrapper()
+            rust_model = "mono_exp"
+            rust_seq = None
 
-        super(T1rho_T2prep, self).__init__(fit, boundary=boundary, normalize=normalize)
+        super(T1rho_T2prep, self).__init__(
+            fit,
+            boundary=boundary,
+            normalize=normalize,
+            rust_model=rust_model,
+            rust_seq=rust_seq,
+        )
         self.dim = dim
 
     def fit(
@@ -150,8 +161,21 @@ class T1rho_T2prep(AbstractFitting):
         pools: int = cpu_count(),
         min_r2: float = -np.inf,
         method: str = "curvefit",
+        fit_region: str = "mask",
+        region_bounds: Union[dict, None] = None,
+        signal_threshold: float = 0.0,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        fit_maps, r2_map = super().fit(dicom, mask, x, pools=pools, min_r2=min_r2, method=method)
+        fit_maps, r2_map = super().fit(
+            dicom,
+            mask,
+            x,
+            pools=pools,
+            min_r2=min_r2,
+            method=method,
+            fit_region=fit_region,
+            region_bounds=region_bounds,
+            signal_threshold=signal_threshold,
+        )
         return fit_maps, r2_map
 
     def get_TSL(self, first_SL: int = 10, inc_SL: int = 30, n: int = 4) -> np.ndarray:
@@ -179,6 +203,10 @@ class T1rho_T2prep(AbstractFitting):
         pools: int = 0,
         min_r2: float = -np.inf,
         save_dicom_as_nii: bool = True,
+        method: str = "curvefit",
+        fit_region: str = "mask",
+        region_bounds: Union[dict, None] = None,
+        signal_threshold: float = 0.0,
     ):
         """
         Run full evaluation pipline.
@@ -205,7 +233,17 @@ class T1rho_T2prep(AbstractFitting):
                 dicom_folder / "dicom.nii.gz",
             )
             self.save_times(tsl, dicom_folder / "acquisition_times.txt")
-        fit_map, r2 = self.fit(dicom=data, mask=mask.array, x=tsl, pools=pools)
+        fit_map, r2 = self.fit(
+            dicom=data,
+            mask=mask.array,
+            x=tsl,
+            pools=pools,
+            min_r2=min_r2,
+            method=method,
+            fit_region=fit_region,
+            region_bounds=region_bounds,
+            signal_threshold=signal_threshold,
+        )
         results = save_results(
             fit_map=fit_map,
             r2=r2,
@@ -244,10 +282,12 @@ class T1rho_T2prep(AbstractFitting):
             raise NotImplementedError
 
         order = self.check_order(dcm_files)
-        # echos, z, rows, cols --> echos, rows, cols, z
+        # echos, z, rows, cols --> echos, cols, rows, z
+        # NOTE: aligns with T2_T2star's transpose so the mask saved by
+        # maskregistration (ITK layout) matches the DICOM pixel grid.
         dicom = (
             np.array([get_dcm_array(dcm_files[o]) for o in order])
-            .transpose(0, 2, 3, 1)
+            .transpose(0, 3, 2, 1)
             .astype("int16")
         )
         return dicom, None

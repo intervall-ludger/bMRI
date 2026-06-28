@@ -18,6 +18,8 @@ class AbstractFitting(ABC):
         boundary: Tuple[float, float] = None,
         fit_config: Optional[dict] = None,
         normalize: bool = False,
+        rust_model: Optional[str] = None,
+        rust_seq: Optional[dict] = None,
     ) -> None:
         """
         Initializes the AbstractFitting object.
@@ -27,11 +29,17 @@ class AbstractFitting(ABC):
         - boundary (Tuple[float, float], optional): Boundary for the parameters during fitting
         - fit_config (dict, optional): Additional configuration for the fit function
         - normalize (bool, optional): Normalize the data before fitting (default is False)
+        - rust_model (str, optional): Native model id for the Rust backend
+          ("mono_exp", "aronen_t1rho", "aronen_t2", "rausch")
+        - rust_seq (dict, optional): Sequence parameters (TR, T1, alpha, TE, T2star)
+          required by the aronen/rausch models
         """
         self.fit_function = fit_function
         self.bounds = boundary
         self.fit_config = fit_config
         self.normalize = normalize
+        self.rust_model = rust_model
+        self.rust_seq = rust_seq
 
     def set_fit_config(self, fit_config: dict) -> None:
         """
@@ -50,6 +58,9 @@ class AbstractFitting(ABC):
         pools: int = cpu_count(),
         min_r2: float = -np.inf,
         method: str = "curvefit",
+        fit_region: str = "mask",
+        region_bounds: Optional[dict] = None,
+        signal_threshold: float = 0.0,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Fit the given data using parallel processing.
@@ -60,7 +71,14 @@ class AbstractFitting(ABC):
         - x (np.ndarray): Independent variable data
         - pools (int, optional): Number of parallel processes to use (default is the number of CPUs)
         - min_r2 (float, optional): Minimum R squared value to consider (default is negative infinity)
-        - method (str): "curvefit" (default, 3-param with offset) or "loglinear" (fast 2-param, no offset)
+        - method (str): "curvefit" (default), "loglinear" (fast, no offset) or "rust" (native backend)
+        - fit_region (str): "mask" (only masked pixels) or "full" (whole volume, mask used for
+          region bounds and later statistics). Only honored by the "rust" method.
+        - region_bounds (dict, optional): Per-label bounds {label: ((lo, lo, lo), (hi, hi, hi))}.
+          Pixels with a label not listed (including background label 0) are fit with the default
+          bounds, or freely if no default boundary was set. Only honored by the "rust" method.
+        - signal_threshold (float): For fit_region="full", skip pixels whose peak signal is below
+          this fraction of the volume maximum (background removal). 0 fits everything.
 
         Returns:
         - Tuple[np.ndarray, np.ndarray]: Arrays of fit parameters and R squared values
@@ -80,7 +98,109 @@ class AbstractFitting(ABC):
 
         if method == "loglinear":
             return self._fit_loglinear(dicom, mask, x, min_r2)
+        if method == "rust":
+            try:
+                import bmri_fit  # noqa: F401
+            except ImportError:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "bmri_fit native backend not installed, falling back to curvefit. "
+                    "Build it with: cd rust && maturin build --release && "
+                    "uv pip install target/wheels/bmri_fit-*.whl"
+                )
+            else:
+                return self._fit_rust(
+                    dicom, mask, x, min_r2, fit_region, region_bounds, signal_threshold
+                )
         return self._fit_curvefit(dicom, mask, x, pools, min_r2)
+
+    def _fit_rust(
+        self,
+        dicom: np.ndarray,
+        mask: np.ndarray,
+        x: np.ndarray,
+        min_r2: float,
+        fit_region: str = "mask",
+        region_bounds: Optional[dict] = None,
+        signal_threshold: float = 0.0,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Fit via the native Rust backend (Levenberg-Marquardt, parallel over pixels)."""
+        import bmri_fit
+
+        num_params = 3
+        fit_maps = np.full((num_params, *mask.shape), np.nan)
+        r2_map = np.zeros(mask.shape)
+
+        if fit_region == "full":
+            peak = dicom.max(axis=0)
+            if signal_threshold > 0:
+                sel = peak > signal_threshold * float(peak.max())
+            else:
+                sel = np.ones(mask.shape, dtype=bool)
+        else:
+            sel = mask > 0
+
+        coords = np.nonzero(sel)
+        if len(coords[0]) == 0:
+            return np.array(fit_maps), r2_map
+
+        signals = np.ascontiguousarray(
+            dicom[:, coords[0], coords[1], coords[2]].T, dtype=np.float64
+        )
+        n_pix = signals.shape[0]
+        lower, upper = self._build_pixel_bounds(mask, coords, n_pix, region_bounds)
+
+        seq = self.rust_seq or {}
+        params, r2 = bmri_fit.fit_volume(
+            signals,
+            np.ascontiguousarray(x, dtype=np.float64),
+            lower,
+            upper,
+            self.rust_model or "mono_exp",
+            tr=float(seq.get("TR", 0.0)),
+            t1=float(seq.get("T1", 0.0)),
+            alpha=float(seq.get("alpha", 0.0)),
+            te=float(seq.get("TE", 0.0)),
+            t2star=float(seq.get("T2star", 0.0)),
+            normalize=self.normalize,
+            max_iter=100,
+        )
+
+        good = r2 > min_r2
+        idx = (coords[0][good], coords[1][good], coords[2][good])
+        for p in range(num_params):
+            fit_maps[p][idx] = params[good, p]
+        r2_map[coords] = r2
+        return np.array(fit_maps), r2_map
+
+    def _build_pixel_bounds(
+        self,
+        mask: np.ndarray,
+        coords: Tuple[np.ndarray, ...],
+        n_pix: int,
+        region_bounds: Optional[dict],
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Build per-pixel (n_pix, 3) lower/upper bound arrays from default + per-label bounds."""
+        default = (
+            self.bounds
+            if self.bounds is not None
+            else ((-1e8, 1e-3, -1e8), (1e8, 1e8, 1e8))
+        )
+        lower = np.tile(np.asarray(default[0], dtype=np.float64), (n_pix, 1))
+        upper = np.tile(np.asarray(default[1], dtype=np.float64), (n_pix, 1))
+
+        if region_bounds:
+            labels = np.round(mask[coords]).astype(int)
+            for lab, (lo, hi) in region_bounds.items():
+                m = labels == int(lab)
+                lower[m] = np.asarray(lo, dtype=np.float64)
+                upper[m] = np.asarray(hi, dtype=np.float64)
+
+        lower = np.nan_to_num(lower, neginf=-1e8, posinf=1e8)
+        upper = np.nan_to_num(upper, neginf=-1e8, posinf=1e8)
+        lower[:, 1] = np.clip(lower[:, 1], 1e-3, None)  # T must stay positive
+        return np.ascontiguousarray(lower), np.ascontiguousarray(upper)
 
     def _fit_loglinear(
         self,
@@ -127,7 +247,9 @@ class AbstractFitting(ABC):
             t_vals[out_of_bounds] = np.nan
 
         # Calculate R² for all pixels vectorized
-        fitted = s0_vals[np.newaxis, :] * np.exp(-x[:, np.newaxis] * inv_t[np.newaxis, :])
+        fitted = s0_vals[np.newaxis, :] * np.exp(
+            -x[:, np.newaxis] * inv_t[np.newaxis, :]
+        )
         ss_res = np.sum((pixel_data - fitted) ** 2, axis=0)
         ss_tot = np.sum((pixel_data - pixel_data.mean(axis=0)) ** 2, axis=0)
         r2_vals = np.where(ss_tot > 0, 1 - ss_res / ss_tot, 0.0)
@@ -135,7 +257,9 @@ class AbstractFitting(ABC):
         # Store results
         good = np.isfinite(t_vals) & (r2_vals > min_r2)
         idx = (coords[0][good], coords[1][good], coords[2][good])
-        fit_maps[0][idx] = s0_vals[good] if not self.normalize else s0_vals[good] * maxvals[good]
+        fit_maps[0][idx] = (
+            s0_vals[good] if not self.normalize else s0_vals[good] * maxvals[good]
+        )
         fit_maps[1][idx] = t_vals[good]
         fit_maps[2][idx] = 0.0  # offset = 0
 
@@ -261,7 +385,10 @@ def _loglinear_initial_guess(
         t_init = np.clip(t_init, bounds[0][1], bounds[1][1])
         offset_init = np.clip(offset_init, bounds[0][2], bounds[1][2])
 
-    return [[float(s0_init[i]), float(t_init[i]), float(offset_init[i])] for i in range(len(pixel_data_list))]
+    return [
+        [float(s0_init[i]), float(t_init[i]), float(offset_init[i])]
+        for i in range(len(pixel_data_list))
+    ]
 
 
 def _fit_chunk(
@@ -278,7 +405,9 @@ def _fit_chunk(
     results = []
     for idx, y in enumerate(pixel_data_list):
         p0 = p0_list[idx] if p0_list is not None else None
-        param = fit_pixel(y, x, fit_function, bounds, config, normalize, calc_p0, p0_override=p0)
+        param = fit_pixel(
+            y, x, fit_function, bounds, config, normalize, calc_p0, p0_override=p0
+        )
         if param is None:
             results.append((None, 0.0))
         else:

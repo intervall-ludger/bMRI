@@ -14,7 +14,13 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from bmri.config import FittingModel, T1Config, T1rhoConfig, T1rhoSequenceConfig, T2Config
+from bmri.config import (
+    FittingModel,
+    T1Config,
+    T1rhoConfig,
+    T1rhoSequenceConfig,
+    T2Config,
+)
 from bmri.config import load_config_from_toml
 from bmri.exceptions import BMRIError
 from bmri.logger import console, get_logger
@@ -27,6 +33,23 @@ from bmri.validators import (
 )
 
 logger = get_logger(__name__)
+
+# Map CLI backend choice to AbstractFitting.fit method name
+_BACKEND_TO_METHOD = {
+    "rust": "rust",
+    "python": "curvefit",
+    "loglinear": "loglinear",
+}
+
+
+def _resolve_method(backend: str) -> str:
+    try:
+        return _BACKEND_TO_METHOD[backend]
+    except KeyError:
+        raise typer.BadParameter(
+            f"Unknown backend '{backend}'. Choose from: {', '.join(_BACKEND_TO_METHOD)}"
+        )
+
 
 # Create fit subcommand group
 app = typer.Typer(
@@ -117,7 +140,9 @@ def _copy_results_and_display(
         logger.debug(f"Copied {acquisition_file.name} to {output_dir}")
 
     # Display file summary
-    console.print(f"\n[bold]Output Files:[/bold] {len(nifti_files)} NIfTI, {len(csv_files)} CSV")
+    console.print(
+        f"\n[bold]Output Files:[/bold] {len(nifti_files)} NIfTI, {len(csv_files)} CSV"
+    )
     console.print(f"[dim]Location:[/dim] {output_dir}\n")
 
     # Display ROI statistics from CSV files
@@ -335,6 +360,28 @@ def fit_t2star(
             max=3,
         ),
     ] = 3,
+    backend: Annotated[
+        str,
+        typer.Option(
+            help="Fitting backend: rust (native, fast), python (scipy curve_fit) or loglinear",
+        ),
+    ] = "rust",
+    fit_region: Annotated[
+        str,
+        typer.Option(
+            "--fit-region",
+            help="rust backend only: 'mask' fits masked pixels, 'full' fits the whole volume",
+        ),
+    ] = "mask",
+    signal_threshold: Annotated[
+        float,
+        typer.Option(
+            "--signal-threshold",
+            help="fit-region=full only: skip pixels below this fraction of the volume peak",
+            min=0.0,
+            max=1.0,
+        ),
+    ] = 0.0,
 ) -> None:
     """Fit T2* relaxation time maps from multi-echo DICOM data.
 
@@ -380,7 +427,10 @@ def fit_t2star(
             if boundary:
                 # User-provided boundary string
                 lower, upper = parse_boundary_string(boundary)
-                boundary_tuple = ((lower[0], lower[1], lower[2]), (upper[0], upper[1], upper[2]))
+                boundary_tuple = (
+                    (lower[0], lower[1], lower[2]),
+                    (upper[0], upper[1], upper[2]),
+                )
                 logger.info("Using user-provided boundaries")
             elif auto_boundary:
                 # Automatic estimation from data
@@ -408,6 +458,7 @@ def fit_t2star(
         # Import legacy modules - add project root to path dynamically
         import sys
         from pathlib import Path as _Path
+
         # __file__ is: .../bMRI/src/bmri/cli/commands/fit.py
         # We need:     .../bMRI (project root)
         _project_root = _Path(__file__).resolve().parent.parent.parent.parent.parent
@@ -442,6 +493,9 @@ def fit_t2star(
                 mask_file=mask_file,
                 pools=config.pools,
                 min_r2=config.min_r2,
+                method=_resolve_method(backend),
+                fit_region=fit_region,
+                signal_threshold=signal_threshold,
             )
 
             progress.update(task, completed=True)
@@ -536,6 +590,28 @@ def fit_t2(
             max=3,
         ),
     ] = 3,
+    backend: Annotated[
+        str,
+        typer.Option(
+            help="Fitting backend: rust (native, fast), python (scipy curve_fit) or loglinear",
+        ),
+    ] = "rust",
+    fit_region: Annotated[
+        str,
+        typer.Option(
+            "--fit-region",
+            help="rust backend only: 'mask' fits masked pixels, 'full' fits the whole volume",
+        ),
+    ] = "mask",
+    signal_threshold: Annotated[
+        float,
+        typer.Option(
+            "--signal-threshold",
+            help="fit-region=full only: skip pixels below this fraction of the volume peak",
+            min=0.0,
+            max=1.0,
+        ),
+    ] = 0.0,
 ) -> None:
     """Fit T2 relaxation time maps from DICOM data.
 
@@ -567,7 +643,10 @@ def fit_t2(
         else:
             if boundary:
                 lower, upper = parse_boundary_string(boundary)
-                boundary_tuple = ((lower[0], lower[1], lower[2]), (upper[0], upper[1], upper[2]))
+                boundary_tuple = (
+                    (lower[0], lower[1], lower[2]),
+                    (upper[0], upper[1], upper[2]),
+                )
             else:
                 # Default T2 boundaries
                 boundary_tuple = ((0.9, 5, -0.5), (3, 40, 0.5))
@@ -587,6 +666,7 @@ def fit_t2(
         # Import legacy modules - add project root to path dynamically
         import sys
         from pathlib import Path as _Path
+
         _project_root = _Path(__file__).resolve().parent.parent.parent.parent.parent
         if str(_project_root) not in sys.path:
             sys.path.insert(0, str(_project_root))
@@ -612,6 +692,9 @@ def fit_t2(
                 mask_file=mask_file,
                 pools=config.pools,
                 min_r2=config.min_r2,
+                method=_resolve_method(backend),
+                fit_region=fit_region,
+                signal_threshold=signal_threshold,
             )
 
             progress.update(task, completed=True)
@@ -700,6 +783,28 @@ def fit_t1rho(
             min=0,
         ),
     ] = 0,
+    backend: Annotated[
+        str,
+        typer.Option(
+            help="Fitting backend: rust (native, fast), python (scipy curve_fit) or loglinear",
+        ),
+    ] = "rust",
+    fit_region: Annotated[
+        str,
+        typer.Option(
+            "--fit-region",
+            help="rust backend only: 'mask' fits masked pixels, 'full' fits the whole volume",
+        ),
+    ] = "mask",
+    signal_threshold: Annotated[
+        float,
+        typer.Option(
+            "--signal-threshold",
+            help="fit-region=full only: skip pixels below this fraction of the volume peak",
+            min=0.0,
+            max=1.0,
+        ),
+    ] = 0.0,
 ) -> None:
     """Fit T1rho relaxation time maps from DICOM data.
 
@@ -740,7 +845,10 @@ def fit_t1rho(
         else:
             if boundary:
                 lower, upper = parse_boundary_string(boundary)
-                boundary_tuple = ((lower[0], lower[1], lower[2]), (upper[0], upper[1], upper[2]))
+                boundary_tuple = (
+                    (lower[0], lower[1], lower[2]),
+                    (upper[0], upper[1], upper[2]),
+                )
             else:
                 # Default T1rho boundaries
                 boundary_tuple = ((1, 1, -1000), (10000, 500, 1000))
@@ -760,6 +868,7 @@ def fit_t1rho(
         # Import legacy modules - add project root to path dynamically
         import sys
         from pathlib import Path as _Path
+
         _project_root = _Path(__file__).resolve().parent.parent.parent.parent.parent
         if str(_project_root) not in sys.path:
             sys.path.insert(0, str(_project_root))
@@ -803,6 +912,9 @@ def fit_t1rho(
                 tsl=tsl_times,
                 pools=config.pools,
                 min_r2=config.min_r2,
+                method=_resolve_method(backend),
+                fit_region=fit_region,
+                signal_threshold=signal_threshold,
             )
 
             progress.update(task, completed=True)

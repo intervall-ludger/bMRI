@@ -41,7 +41,11 @@ class T2_T2star(AbstractFitting):
         - normalize: Boolean indicating whether to normalize the data
         """
         super(T2_T2star, self).__init__(
-            mono_exp, boundary=boundary, fit_config=fit_config, normalize=normalize
+            mono_exp,
+            boundary=boundary,
+            fit_config=fit_config,
+            normalize=normalize,
+            rust_model="mono_exp",
         )
         self.dim = dim
 
@@ -52,6 +56,10 @@ class T2_T2star(AbstractFitting):
         pools: int = 0,
         min_r2: float = -np.inf,
         save_dicom_as_nii: bool = True,
+        method: str = "curvefit",
+        fit_region: str = "mask",
+        region_bounds: Union[dict, None] = None,
+        signal_threshold: float = 0.0,
     ):
         """
         Run full evaluation pipline.
@@ -77,7 +85,15 @@ class T2_T2star(AbstractFitting):
             )
             self.save_times(te, dicom_folder / "acquisition_times.txt")
         fit_map, r2 = self.fit(
-            dicom=data, mask=mask.array, x=te, pools=pools, min_r2=min_r2
+            dicom=data,
+            mask=mask.array,
+            x=te,
+            pools=pools,
+            min_r2=min_r2,
+            method=method,
+            fit_region=fit_region,
+            region_bounds=region_bounds,
+            signal_threshold=signal_threshold,
         )
         results = save_results(
             fit_map=fit_map,
@@ -99,8 +115,21 @@ class T2_T2star(AbstractFitting):
         pools: int = cpu_count(),
         min_r2: float = -np.inf,
         method: str = "curvefit",
+        fit_region: str = "mask",
+        region_bounds: Union[dict, None] = None,
+        signal_threshold: float = 0.0,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        fit_maps, r2_map = super().fit(dicom, mask, x, pools=pools, min_r2=min_r2, method=method)
+        fit_maps, r2_map = super().fit(
+            dicom,
+            mask,
+            x,
+            pools=pools,
+            min_r2=min_r2,
+            method=method,
+            fit_region=fit_region,
+            region_bounds=region_bounds,
+            signal_threshold=signal_threshold,
+        )
         return fit_maps, r2_map
 
     def read_data(self, folder: Union[str, Path]) -> Tuple[np.ndarray, np.ndarray]:
