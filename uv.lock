@@ -124,7 +124,7 @@ wheels = [
 
 [[package]]
 name = "bmri"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "dicom2nifti" },
@@ -232,7 +232,7 @@ requires-dist = [
     { name = "ipyvolume", marker = "extra == 'qt'", specifier = ">=0.6.0" },
     { name = "ipywebrtc", marker = "extra == 'qt'", specifier = ">=0.6.0" },
     { name = "ipywidgets", marker = "extra == 'qt'", specifier = ">=7.6.0" },
-    { name = "maskregistration", editable = "../MaskRegistration" },
+    { name = "maskregistration", git = "https://github.com/MPR-UKD/MaskRegistration.git?tag=v0.3.0" },
     { name = "matplotlib", specifier = ">=3.4.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.5.0" },
@@ -1684,8 +1684,8 @@ wheels = [
 
 [[package]]
 name = "maskregistration"
-version = "0.2.0"
-source = { editable = "../MaskRegistration" }
+version = "0.3.0"
+source = { git = "https://github.com/MPR-UKD/MaskRegistration.git?tag=v0.3.0#fd27060497644ebcc55b641aeb14b298efbc0842" }
 dependencies = [
     { name = "fastapi" },
     { name = "natsort" },
@@ -1695,22 +1695,6 @@ dependencies = [
     { name = "pydicom" },
     { name = "simpleitk" },
     { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "black", marker = "extra == 'dev'", specifier = ">=23.3.0" },
-    { name = "fastapi", specifier = ">=0.100.0" },
-    { name = "natsort", specifier = ">=8.4.0" },
-    { name = "nibabel", specifier = ">=5.1.0" },
-    { name = "numpy", specifier = ">=1.25.0" },
-    { name = "pillow", specifier = ">=10.0.0" },
-    { name = "pydicom", specifier = ">=2.4.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
-    { name = "pytest-html", marker = "extra == 'dev'", specifier = ">=3.2.0" },
-    { name = "simpleitk", specifier = ">=2.2.1" },
-    { name = "uvicorn", specifier = ">=0.23.0" },
 ]
 
 [[package]]

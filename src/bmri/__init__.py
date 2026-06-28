@@ -24,7 +24,7 @@ _src_path = Path(__file__).parent.parent
 if str(_src_path) not in sys.path:
     sys.path.insert(0, str(_src_path))
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "Ludger Radke"
 
 from bmri.config import T1Config, T1rhoConfig, T2Config

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bMRI"
-version = "0.3.0"
+version = "0.4.0"
 description = "Quantitative MRI analysis: per-voxel T1/T2/T2*/T1rho fitting with a Rust backend, ROI statistics, GLCM textures, and a web viewer."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -182,7 +182,7 @@ no_implicit_optional = true
 files = ["src/bmri"]
 
 [tool.uv.sources]
-maskregistration = { path = "../MaskRegistration", editable = true }
+maskregistration = { git = "https://github.com/MPR-UKD/MaskRegistration.git", tag = "v0.3.0" }
 
 [dependency-groups]
 dev = [
