@@ -1,0 +1,38 @@
+site_name: bMRI
+site_description: Quantitative MRI analysis library
+repo_url: https://github.com/ludgerradke/bMRI
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_root_heading: true
+
+nav:
+  - Home: index.md
+  - Quick start: quickstart.md
+  - Fitting backends: backends.md
+  - API reference: api.md
+  - Validation: validation.md
