@@ -1,10 +1,4 @@
-"""Per-voxel relaxometric fitting.
-
-Public API for T2, T2*, T1, T1rho mapping plus DWI (ADC, Kurtosis, IVIM),
-multi-component T2* and user-defined string expressions. All classes accept
-a method argument ("curvefit", "loglinear" or "rust") and an optional
-region_bounds dict for label-specific parameter ranges.
-"""
+"""Per-voxel relaxometric fitting + multi-component NNLS spectra."""
 
 from Fitting.AbstractFitting import AbstractFitting
 from Fitting.dwi import (
@@ -15,6 +9,7 @@ from Fitting.dwi import (
     StretchedExp,
     T2StarBiExp,
 )
+from Fitting.spectrum import DiffusionSpectrum, T2Spectrum
 from Fitting.T1 import InversionRecoveryT1
 from Fitting.T1rho_T2prep import T1rho_T2prep
 from Fitting.T2_T2star import T2_T2star
@@ -26,6 +21,7 @@ T1 = InversionRecoveryT1
 __all__ = [
     "AbstractFitting",
     "CustomExpression",
+    "DiffusionSpectrum",
     "DWIIvim",
     "DWIKurtosis",
     "DWIMonoExp",
@@ -36,5 +32,6 @@ __all__ = [
     "T1RhoT2prep",
     "T2_T2star",
     "T2T2star",
+    "T2Spectrum",
     "T2StarBiExp",
 ]

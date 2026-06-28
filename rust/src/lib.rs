@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 
 mod expr;
+mod nnls;
 
 /// Hard upper bound for parameter count. All built-in models stay within
 /// this. The actual count per model is given by `Model::n_params()`.
@@ -303,7 +304,14 @@ fn model_from_str(name: &str) -> PyResult<Model> {
 }
 
 /// Seed defaults per model when a log-linear seed does not apply.
-fn make_seed(model: Model, lo: &[f64], hi: &[f64], np: usize, x: &[f64], y: &[f64]) -> [f64; MAX_NP] {
+fn make_seed(
+    model: Model,
+    lo: &[f64],
+    hi: &[f64],
+    np: usize,
+    x: &[f64],
+    y: &[f64],
+) -> [f64; MAX_NP] {
     match model {
         Model::MonoExp
         | Model::AronenT2
@@ -320,7 +328,11 @@ fn make_seed(model: Model, lo: &[f64], hi: &[f64], np: usize, x: &[f64], y: &[f6
         Model::DwiIvim => {
             // p = [S0, D, D_star, f]. Initial guess: D ~ tissue, D* ~ 10x larger, f small.
             let mut s = [0.0_f64; MAX_NP];
-            s[0] = y.iter().cloned().fold(0.0_f64, f64::max).max(0.5 * (lo[0] + hi[0]));
+            s[0] = y
+                .iter()
+                .cloned()
+                .fold(0.0_f64, f64::max)
+                .max(0.5 * (lo[0] + hi[0]));
             s[1] = 0.5 * (lo[1] + hi[1]);
             s[2] = (10.0 * s[1]).min(hi[2]).max(lo[2]);
             s[3] = 0.1_f64.clamp(lo[3], hi[3]);
@@ -330,7 +342,11 @@ fn make_seed(model: Model, lo: &[f64], hi: &[f64], np: usize, x: &[f64], y: &[f6
         Model::T2starBiExp => {
             // p = [S0, T_short, T_long, f]. Initial guess: T_short small, T_long large.
             let mut s = [0.0_f64; MAX_NP];
-            s[0] = y.iter().cloned().fold(0.0_f64, f64::max).max(0.5 * (lo[0] + hi[0]));
+            s[0] = y
+                .iter()
+                .cloned()
+                .fold(0.0_f64, f64::max)
+                .max(0.5 * (lo[0] + hi[0]));
             s[1] = (0.5 * (lo[1] + hi[1])).min(20.0);
             s[2] = (0.5 * (lo[2] + hi[2])).max(60.0);
             s[3] = 0.3_f64.clamp(lo[3], hi[3]);
@@ -430,7 +446,9 @@ fn fit_volume<'py>(
     };
 
     let xv: Vec<f64> = xs.iter().cloned().collect();
-    let rows: Vec<Vec<f64>> = (0..n).map(|i| sig.row(i).iter().cloned().collect()).collect();
+    let rows: Vec<Vec<f64>> = (0..n)
+        .map(|i| sig.row(i).iter().cloned().collect())
+        .collect();
     let los: Vec<Vec<f64>> = (0..n)
         .map(|i| (0..np).map(|j| lo[(i, j)]).collect())
         .collect();
@@ -447,28 +465,14 @@ fn fit_volume<'py>(
                     Some(prog) => {
                         let eval_fn = |xi: f64, p: &[f64]| prog.eval(xi, p);
                         fit_pixel_lm(
-                            &eval_fn,
-                            &xv,
-                            &rows[i],
-                            &los[i],
-                            &his[i],
-                            np,
-                            seed,
-                            normalize,
+                            &eval_fn, &xv, &rows[i], &los[i], &his[i], np, seed, normalize,
                             max_iter,
                         )
                     }
                     None => {
                         let eval_fn = |xi: f64, p: &[f64]| eval_builtin(model_enum, &seq, xi, p);
                         fit_pixel_lm(
-                            &eval_fn,
-                            &xv,
-                            &rows[i],
-                            &los[i],
-                            &his[i],
-                            np,
-                            seed,
-                            normalize,
+                            &eval_fn, &xv, &rows[i], &los[i], &his[i], np, seed, normalize,
                             max_iter,
                         )
                     }
@@ -496,14 +500,109 @@ fn fit_volume<'py>(
 /// before launching a long volume fit.
 #[pyfunction]
 fn check_expression(expression: &str, x: f64, params: Vec<f64>) -> PyResult<f64> {
-    let prog = expr::compile(expression, params.len()).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let prog =
+        expr::compile(expression, params.len()).map_err(pyo3::exceptions::PyValueError::new_err)?;
     Ok(prog.eval(x, &params))
+}
+
+/// NNLS T2 spectrum (or any non-negative basis decomposition).
+///
+/// For each pixel, solves min ||A x - s||² s.t. x>=0 with an optional Tikhonov
+/// second-difference penalty (regularisation parameter `lambda`).
+///
+/// Inputs:
+///   signals: (n_pixels, n_echoes) magnitude data
+///   x_axis:  (n_echoes,) TE values (or generally the independent axis)
+///   t_grid:  (n_bins,)   T2 grid (log- or linearly spaced)
+///   kernel:  "t2"  -> A[i,j] = exp(-x_axis[i] / t_grid[j])
+///            "dwi" -> A[i,j] = exp(-x_axis[i] * t_grid[j])  (b * D)
+///   lambda:  regularisation strength (0 = pure NNLS, typical 0.01-1.0)
+///   max_iter: per-pixel NNLS iterations
+///
+/// Output: (n_pixels, n_bins) non-negative amplitudes.
+#[pyfunction]
+#[pyo3(signature = (signals, x_axis, t_grid, kernel="t2", lambda_reg=0.0, max_iter=500))]
+fn fit_spectrum<'py>(
+    py: Python<'py>,
+    signals: PyReadonlyArray2<'py, f64>,
+    x_axis: PyReadonlyArray1<'py, f64>,
+    t_grid: PyReadonlyArray1<'py, f64>,
+    kernel: &str,
+    lambda_reg: f64,
+    max_iter: usize,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let sig = signals.as_array();
+    let xs = x_axis.as_array();
+    let ts = t_grid.as_array();
+    let n_pix = sig.nrows();
+    let n_echo = sig.ncols();
+    let n_bin = ts.len();
+
+    if xs.len() != n_echo {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "x_axis length does not match echo count",
+        ));
+    }
+
+    // Build A. Two kernels for now: T2 decay (exp(-x/T)) and DWI (exp(-x*D)).
+    let mut a = DMatrix::<f64>::zeros(n_echo, n_bin);
+    match kernel {
+        "t2" | "t2star" | "t1rho" => {
+            for i in 0..n_echo {
+                for j in 0..n_bin {
+                    a[(i, j)] = (-xs[i] / ts[j]).exp();
+                }
+            }
+        }
+        "dwi" | "adc" => {
+            for i in 0..n_echo {
+                for j in 0..n_bin {
+                    a[(i, j)] = (-xs[i] * ts[j]).exp();
+                }
+            }
+        }
+        other => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown kernel '{other}'; use 't2' or 'dwi'"
+            )));
+        }
+    }
+
+    let l_mat = nnls::second_difference_matrix(n_bin);
+    let rows: Vec<Vec<f64>> = (0..n_pix)
+        .map(|i| sig.row(i).iter().cloned().collect())
+        .collect();
+
+    let results: Vec<Vec<f64>> = py.allow_threads(|| {
+        (0..n_pix)
+            .into_par_iter()
+            .map(|i| {
+                let y = DVector::<f64>::from_row_slice(&rows[i]);
+                let sol = if lambda_reg > 0.0 {
+                    nnls::nnls_tikhonov(&a, &y, &l_mat, lambda_reg, max_iter)
+                } else {
+                    nnls::nnls(&a, &y, max_iter)
+                };
+                sol.iter().cloned().collect()
+            })
+            .collect()
+    });
+
+    let mut flat = vec![0.0_f64; n_pix * n_bin];
+    for (i, row) in results.iter().enumerate() {
+        for (j, &v) in row.iter().enumerate() {
+            flat[i * n_bin + j] = v;
+        }
+    }
+    let arr = PyArray1::from_vec_bound(py, flat).reshape([n_pix, n_bin])?;
+    Ok(arr)
 }
 
 #[pymodule]
 fn bmri_fit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit_volume, m)?)?;
     m.add_function(wrap_pyfunction!(check_expression, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_spectrum, m)?)?;
     Ok(())
 }
 

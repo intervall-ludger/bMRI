@@ -182,7 +182,7 @@ no_implicit_optional = true
 files = ["src/bmri"]
 
 [tool.uv.sources]
-maskregistration = { git = "https://github.com/MPR-UKD/MaskRegistration.git", tag = "v0.2.0" }
+maskregistration = { path = "../MaskRegistration", editable = true }
 
 [dependency-groups]
 dev = [

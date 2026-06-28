@@ -4,6 +4,7 @@ from bmri.core.fitting import (
     T1,
     AbstractFitting,
     CustomExpression,
+    DiffusionSpectrum,
     DWIIvim,
     DWIKurtosis,
     DWIMonoExp,
@@ -12,6 +13,7 @@ from bmri.core.fitting import (
     T1rho_T2prep,
     T1RhoT2prep,
     T2_T2star,
+    T2Spectrum,
     T2StarBiExp,
     T2T2star,
 )
@@ -19,6 +21,7 @@ from bmri.core.fitting import (
 __all__ = [
     "AbstractFitting",
     "CustomExpression",
+    "DiffusionSpectrum",
     "DWIIvim",
     "DWIKurtosis",
     "DWIMonoExp",
@@ -28,6 +31,7 @@ __all__ = [
     "T1rho_T2prep",
     "T1RhoT2prep",
     "T2_T2star",
-    "T2T2star",
+    "T2Spectrum",
     "T2StarBiExp",
+    "T2T2star",
 ]

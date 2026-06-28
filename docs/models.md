@@ -122,3 +122,47 @@ print([cls.__name__ for cls in bf.__all__])
 # DWIMonoExp, DWIKurtosis, DWIIvim,
 # T2StarBiExp, StretchedExp, CustomExpression
 ```
+
+## Multi-component spectrum — `bmri.fitting.T2Spectrum`
+
+When a voxel is not well described by a single T2 (myelin water, free
+water, intracellular pool…) you can fit a non-negative spectrum of T2
+values instead. We solve
+
+```
+S(TE) ≈ sum_j a_j * exp(-TE / t_grid[j])    s.t. a_j >= 0
+```
+
+with optional Tikhonov smoothness regularisation. Returns a (n_bins, X,
+Y, Z) amplitude map.
+
+```python
+import numpy as np
+from bmri.fitting import T2Spectrum
+
+t_grid = T2Spectrum.log_grid(5, 300, 40)            # 5..300 ms, 40 bins
+sp = T2Spectrum(t_grid=t_grid, lambda_reg=0.005)
+spec, recon_err = sp.fit(data, mask, te)
+
+# Useful summaries:
+myelin_water = sp.integrate(spec, 10, 40)           # fraction in short-T2 band
+free_water   = sp.integrate(spec, 200, 300)
+peak         = sp.peak_t2(spec)
+gmean        = sp.geometric_mean_t2(spec)
+```
+
+`DiffusionSpectrum` is the same engine with kernel `exp(-b * D)` for IVIM /
+diffusion spectrum analysis. The NNLS solver is Lawson-Hanson in Rust,
+parallel over voxels.
+
+## Mask registration with safety net
+
+bMRI's mask registration goes through `MaskRegistration` (the same
+package shipped separately). After upstream patches (see the package
+changelog) `MaskRegistration.transform()`:
+
+- strips macOS resource forks (`._<name>.dcm`) automatically before reading
+- runs `check_alignment(mask, dicom_folder)` and warns loudly if the
+  mask's affine origin disagrees with the DICOM's `ImagePositionPatient`
+  by more than 5 mm (almost always a sign that the mask was drawn on a
+  different scan)
