@@ -124,7 +124,7 @@ wheels = [
 
 [[package]]
 name = "bmri"
-version = "0.4.1"
+version = "0.4.2"
 source = { editable = "." }
 dependencies = [
     { name = "dicom2nifti" },
@@ -232,7 +232,7 @@ requires-dist = [
     { name = "ipyvolume", marker = "extra == 'qt'", specifier = ">=0.6.0" },
     { name = "ipywebrtc", marker = "extra == 'qt'", specifier = ">=0.6.0" },
     { name = "ipywidgets", marker = "extra == 'qt'", specifier = ">=7.6.0" },
-    { name = "maskregistration", git = "https://github.com/MPR-UKD/MaskRegistration.git?tag=v0.5.0" },
+    { name = "maskregistration", git = "https://github.com/MPR-UKD/MaskRegistration.git?tag=v0.7.0" },
     { name = "matplotlib", specifier = ">=3.4.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.5.0" },
@@ -1684,8 +1684,8 @@ wheels = [
 
 [[package]]
 name = "maskregistration"
-version = "0.5.0"
-source = { git = "https://github.com/MPR-UKD/MaskRegistration.git?tag=v0.5.0#7d596cca02a76271b7a9c1733cddc74fba6ec231" }
+version = "0.7.0"
+source = { git = "https://github.com/MPR-UKD/MaskRegistration.git?tag=v0.7.0#f3e44f2ab2e69897ca0fdd34f21a4637b496a317" }
 dependencies = [
     { name = "fastapi" },
     { name = "natsort" },
